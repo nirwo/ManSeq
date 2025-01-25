@@ -235,7 +235,7 @@ async def import_csv(file: UploadFile = File(...)):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         for row in reader:
-            app_name = row.get('application', '')
+            app_name = row.get('team', '')  
             app_id = None
             if app_name:
                 cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
@@ -251,9 +251,14 @@ async def import_csv(file: UploadFile = File(...)):
                 '''INSERT INTO servers 
                    (name, type, status, owner_name, owner_contact, hostname, port, application_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                (row['name'], row['type'], 'Pending', row['owner_name'], 
-                 row['owner_contact'], row.get('hostname', ''), 
-                 int(row.get('port', 80)), app_id)
+                (row['name'], 
+                 'WEB',  
+                 'Pending', 
+                 row.get('team', ''),  
+                 '',  
+                 row.get('host', ''), 
+                 int(row.get('port', 80)), 
+                 app_id)
             )
     return {"message": "Import successful"}
 
