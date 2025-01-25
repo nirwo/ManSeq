@@ -102,6 +102,30 @@ datacenter-shutdown-manager/
    - See systems managed by each owner
    - Quick-access contact options
 
+## CSV File Format
+
+Two example CSV files are provided to help you understand the data format:
+
+1. **template.csv**: Basic template showing the required columns and format
+2. **sample_data.csv**: Sample data with example entries
+
+The CSV files should follow this structure:
+- System Name
+- IP Address
+- Owner Name
+- Owner Email
+- Department
+- Status
+- Last Check Time
+- Notes
+
+Example from template.csv:
+```csv
+System Name,IP Address,Owner Name,Owner Email,Department,Status,Last Check Time,Notes
+server1,192.168.1.1,John Doe,john@example.com,IT,Online,2025-01-25 19:30:00,Primary server
+server2,192.168.1.2,Jane Smith,jane@example.com,DevOps,Offline,2025-01-25 19:30:00,Backup server
+```
+
 ## Development
 
 - The project uses the `modern-ui` branch for development
