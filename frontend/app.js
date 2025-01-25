@@ -188,17 +188,18 @@ createApp({
                 this.showError('Error saving server: ' + error.message)
             }
         },
-        async deleteServer(id) {
+        async deleteServer(serverId) {
             if (!confirm('Are you sure you want to delete this server?')) return
             
             try {
-                const response = await fetch(`${API_BASE_URL}/servers/${id}`, {
+                const response = await fetch(`${API_BASE_URL}/servers/${serverId}`, {
                     method: 'DELETE'
                 })
-
+                
                 if (!response.ok) throw new Error('Failed to delete server')
-
-                await this.fetchServers()
+                
+                // Remove from local state
+                this.servers = this.servers.filter(s => s.id !== serverId)
                 this.showSuccess('Server deleted successfully')
             } catch (error) {
                 this.showError('Error deleting server: ' + error.message)

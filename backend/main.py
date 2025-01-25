@@ -263,13 +263,24 @@ async def delete_server(server_id: int):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM servers WHERE id = ?', (server_id,))
-        if cursor.rowcount == 0:
+        
+        # First check if server exists
+        cursor.execute('SELECT id FROM servers WHERE id = ?', (server_id,))
+        if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Server not found")
+            
+        # Delete the server
+        cursor.execute('DELETE FROM servers WHERE id = ?', (server_id,))
+        conn.commit()
+        
+        return {"message": "Server deleted successfully"}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
             conn.close()
-    return {"message": "Server deleted"}
 
 @app.post("/servers/import-csv")
 async def import_csv(file: UploadFile = File(...)):
