@@ -8,8 +8,8 @@ kill $(lsof -t -i:3000) 2>/dev/null || true
 kill $(lsof -t -i:3001) 2>/dev/null || true
 
 # Start backend and frontend
-python3 backend/main.py & 
-npx serve frontend -l 3001
+python3 backend/main.py --host 0.0.0.0 --port 3000 & 
+npx serve frontend -l tcp://0.0.0.0:3001
 
 # Handle cleanup on script exit
 cleanup() {
@@ -19,7 +19,6 @@ cleanup() {
     exit
 }
 
-trap cleanup SIGINT SIGTERM EXIT
+trap cleanup SIGINT SIGTERM
 
-# Wait for either process to exit
 wait
