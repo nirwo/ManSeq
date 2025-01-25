@@ -90,30 +90,18 @@ def init_db():
 
 init_db()
 
-async def check_server_status(hostname: str, port: int = 80) -> str:
-    if not hostname:
-        return "Unknown"
+async def check_server_status(hostname: str, port: int = 80):
     try:
-        # Set a shorter timeout for ping
-        ping_result = subprocess.run(['ping', '-c', '1', '-W', '1', hostname], 
-                                   stdout=subprocess.PIPE, 
-                                   stderr=subprocess.PIPE,
-                                   timeout=2)
-        if ping_result.returncode == 0:
-            if port in [80, 443, 8080, 8443]:
-                try:
-                    protocol = 'https' if port in [443, 8443] else 'http'
-                    url = f"{protocol}://{hostname}:{port}"
-                    response = requests.get(url, timeout=3, verify=False)
-                    return "Online" if response.status_code < 400 else "Error"
-                except requests.exceptions.RequestException:
-                    return "Error"
-            return "Online"
-        return "Offline"
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
-        return "Offline"
+        # Quick timeout for faster response
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(hostname, port),
+            timeout=1.0
+        )
+        writer.close()
+        await writer.wait_closed()
+        return 'Online'
     except Exception:
-        return "Error"
+        return 'Offline'
 
 async def update_all_statuses():
     while True:
@@ -123,15 +111,15 @@ async def update_all_statuses():
                 cursor.execute('SELECT id, hostname, port FROM servers')
                 servers = cursor.fetchall()
                 
-                for server_id, hostname, port in servers:
-                    if hostname:
-                        status = await check_server_status(hostname, port or 80)
-                        cursor.execute('UPDATE servers SET status = ? WHERE id = ?', 
-                                     (status, server_id))
+                for server in servers:
+                    status = await check_server_status(server[1], server[2])
+                    cursor.execute('UPDATE servers SET status = ? WHERE id = ?',
+                                 (status, server[0]))
                 conn.commit()
         except Exception as e:
             print(f"Error updating statuses: {e}")
-        await asyncio.sleep(30)
+        finally:
+            await asyncio.sleep(30)  # Check every 30 seconds
 
 @app.on_event("startup")
 async def startup_event():
@@ -145,8 +133,11 @@ async def get_applications():
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM applications')
-        apps = cursor.fetchall()
-        return [dict(app) for app in apps]
+        columns = [col[0] for col in cursor.description]
+        apps = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return {"applications": apps}  # Wrap in object
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
             conn.close()
@@ -190,11 +181,14 @@ async def get_servers():
         cursor = conn.cursor()
         cursor.execute('''
             SELECT s.*, a.name as application_name 
-            FROM servers s 
+            FROM servers s
             LEFT JOIN applications a ON s.application_id = a.id
         ''')
-        servers = cursor.fetchall()
-        return [dict(server) for server in servers]
+        columns = [col[0] for col in cursor.description]
+        servers = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return {"servers": servers}  # Wrap in object to avoid empty response issues
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
             conn.close()

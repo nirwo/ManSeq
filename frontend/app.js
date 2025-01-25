@@ -64,7 +64,8 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/servers`)
                 if (!response.ok) throw new Error('Failed to fetch servers')
-                this.servers = await response.json()
+                const data = await response.json()
+                this.servers = data.servers || []
             } catch (error) {
                 this.showError('Error loading servers: ' + error.message)
             }
@@ -73,7 +74,8 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/applications`)
                 if (!response.ok) throw new Error('Failed to fetch applications')
-                this.applications = await response.json()
+                const data = await response.json()
+                this.applications = data.applications || []
             } catch (error) {
                 this.showError('Error loading applications: ' + error.message)
             }
