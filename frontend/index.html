@@ -118,12 +118,26 @@
                                           :class="getStatusClass(server.status)"></span>
                                     <span class="font-medium">{{ server.name }}</span>
                                 </div>
+                                <!-- Server Type and Port -->
+                                <select v-model="server.type" 
+                                class="rounded border p-1 text-sm">
+                            <option v-for="(typeInfo, type) in serverTypes" 
+                                    :key="type" 
+                                    :value="type">
+                                {{ typeInfo.description }}
+                            </option>
+                        </select>
+                        <input type="number" 
+                               v-model.number="server.port"
+                               :placeholder="serverTypes[server.type].defaultPort"
+                               class="w-24 rounded border p-1 text-sm"
+                               :class="{'bg-gray-100': server.type !== 'CUSTOM'}">
                                 <div class="flex items-center space-x-2">
                                     <!-- Shutdown Status Controls -->
                                     <select v-model="server.shutdown_status" 
                                             @change="updateShutdownStatus(server)"
                                             class="rounded border p-1 text-sm">
-                                        <option value="Not Started">Not Started</option>
+                                        <option value="Not Started" selected>Not Started</option>
                                         <option value="In Progress">In Progress</option>
                                         <option value="Completed">Completed</option>
                                     </select>
@@ -138,8 +152,30 @@
                                 </div>
                             </div>
                             <div class="text-sm text-gray-600">
-                                <p>Type: {{ server.type }}</p>
-                                <p>Host: {{ server.hostname }}:{{ server.port }}</p>
+                                <div class="flex items-center space-x-4 mb-2">
+                                    <div>
+                                        <span class="font-medium">Type:</span>
+                                        <select v-model="server.type" 
+                                                @change="updateServerPort"
+                                                class="ml-2 rounded border p-1">
+                                            <option v-for="(typeInfo, type) in serverTypes" 
+                                                    :key="type" 
+                                                    :value="type">
+                                                {{ typeInfo.description }}
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium">Port:</span>
+                                        <input type="number" 
+                                               v-model.number="server.port"
+                                               :placeholder="serverTypes[server.type].defaultPort"
+                                               class="ml-2 w-24 rounded border p-1"
+                                               :class="{'bg-gray-100': server.type !== 'CUSTOM'}"
+                                               :readonly="server.type !== 'CUSTOM'">
+                                    </div>
+                                </div>
+                                <p>Host: {{ server.hostname }}</p>
                                 <p>Owner: {{ server.owner_name }}</p>
                                 <p>Shutdown Status: <span :class="{
                                     'text-yellow-600': server.shutdown_status === 'In Progress',
@@ -181,9 +217,31 @@
                         </div>
                     </div>
                     <div class="text-sm text-gray-600">
+                        <div class="flex items-center space-x-4 mb-2">
+                            <div>
+                                <span class="font-medium">Type:</span>
+                                <select v-model="server.type" 
+                                        @change="updateServerPort"
+                                        class="ml-2 rounded border p-1">
+                                    <option v-for="(typeInfo, type) in serverTypes" 
+                                            :key="type" 
+                                            :value="type">
+                                        {{ typeInfo.description }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <span class="font-medium">Port:</span>
+                                <input type="number" 
+                                       v-model.number="server.port"
+                                       :placeholder="serverTypes[server.type].defaultPort"
+                                       class="ml-2 w-24 rounded border p-1"
+                                       :class="{'bg-gray-100': server.type !== 'CUSTOM'}"
+                                       :readonly="server.type !== 'CUSTOM'">
+                            </div>
+                        </div>
                         <p>Application: {{ getAppName(server.application_id) }}</p>
-                        <p>Type: {{ server.type }}</p>
-                        <p>Host: {{ server.hostname }}:{{ server.port }}</p>
+                        <p>Host: {{ server.hostname }}</p>
                         <p>Owner: {{ server.owner_name }}</p>
                         <p>Shutdown Status: <span :class="{
                             'text-yellow-600': server.shutdown_status === 'In Progress',
@@ -210,4 +268,3 @@
     <script src="app.js"></script>
 </body>
 </html>
-Suggested terminal command 

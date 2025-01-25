@@ -13,6 +13,23 @@ createApp({
             searchQuery: '',
             filteredServers: [],
             filteredApplications: [],
+            serverTypes: {
+                'WEB': { defaultPort: 80, description: 'Web Server (HTTP)' },
+                'HTTPS': { defaultPort: 443, description: 'Secure Web Server (HTTPS)' },
+                'DB_MYSQL': { defaultPort: 3306, description: 'MySQL Database' },
+                'DB_POSTGRES': { defaultPort: 5432, description: 'PostgreSQL Database' },
+                'DB_MONGO': { defaultPort: 27017, description: 'MongoDB Database' },
+                'DB_REDIS': { defaultPort: 6379, description: 'Redis Cache' },
+                'APP_TOMCAT': { defaultPort: 8080, description: 'Tomcat Application Server' },
+                'APP_NODEJS': { defaultPort: 3000, description: 'Node.js Application' },
+                'APP_PYTHON': { defaultPort: 8000, description: 'Python Application' },
+                'MAIL': { defaultPort: 25, description: 'Mail Server (SMTP)' },
+                'FTP': { defaultPort: 21, description: 'FTP Server' },
+                'SSH': { defaultPort: 22, description: 'SSH Server' },
+                'DNS': { defaultPort: 53, description: 'DNS Server' },
+                'MONITORING': { defaultPort: 9090, description: 'Monitoring Service' },
+                'CUSTOM': { defaultPort: null, description: 'Custom Service' }
+            },
             newServer: {
                 name: '',
                 type: 'WEB',
@@ -46,6 +63,11 @@ createApp({
         }
     },
     methods: {
+        updateServerPort() {
+            if (this.newServer.type !== 'CUSTOM') {
+                this.newServer.port = this.serverTypes[this.newServer.type].defaultPort
+            }
+        },
         filterItems() {
             const query = this.searchQuery.toLowerCase()
             
