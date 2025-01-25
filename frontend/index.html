@@ -79,8 +79,8 @@
             <div class="flex justify-between items-center">
                 <h1 class="text-2xl font-bold">Datacenter Servers</h1>
                 <div class="space-x-2">
-                    <a :href="sampleCsvUrl" download="sample.csv" 
-                       class="text-blue-600 hover:text-blue-800">Download Sample CSV</a>
+                    <a :href="sampleCsvUrl" download="template.csv" 
+                       class="text-blue-600 hover:text-blue-800">Download Template CSV</a>
                     <input type="file" @change="handleFileUpload" accept=".csv" 
                            class="hidden" ref="fileInput">
                     <button @click="$refs.fileInput.click()" 
