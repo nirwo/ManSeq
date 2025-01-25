@@ -1,5 +1,7 @@
 const { createApp } = Vue
 
+const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : `http://${window.location.hostname}:3000`
+
 createApp({
     data() {
         return {
@@ -59,7 +61,7 @@ createApp({
         },
         async fetchServers() {
             try {
-                const response = await fetch('http://localhost:3000/servers')
+                const response = await fetch(`${API_BASE_URL}/servers`)
                 if (!response.ok) throw new Error('Failed to fetch servers')
                 this.servers = await response.json()
             } catch (error) {
@@ -68,7 +70,7 @@ createApp({
         },
         async fetchApplications() {
             try {
-                const response = await fetch('http://localhost:3000/applications')
+                const response = await fetch(`${API_BASE_URL}/applications`)
                 if (!response.ok) throw new Error('Failed to fetch applications')
                 this.applications = await response.json()
             } catch (error) {
@@ -93,7 +95,7 @@ createApp({
             }
             
             try {
-                const response = await fetch('http://localhost:3000/applications', {
+                const response = await fetch(`${API_BASE_URL}/applications`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(this.newApp)
@@ -117,7 +119,7 @@ createApp({
             formData.append('file', file)
 
             try {
-                const response = await fetch('http://localhost:3000/servers/import-csv', {
+                const response = await fetch(`${API_BASE_URL}/servers/import-csv`, {
                     method: 'POST',
                     body: formData
                 })
@@ -151,8 +153,8 @@ createApp({
             }
 
             const url = this.editingServer
-                ? `http://localhost:3000/servers/${this.editingServer.id}`
-                : 'http://localhost:3000/servers'
+                ? `${API_BASE_URL}/servers/${this.editingServer.id}`
+                : `${API_BASE_URL}/servers`
             
             const method = this.editingServer ? 'PUT' : 'POST'
             
@@ -187,7 +189,7 @@ createApp({
             if (!confirm('Are you sure you want to delete this server?')) return
             
             try {
-                const response = await fetch(`http://localhost:3000/servers/${id}`, {
+                const response = await fetch(`${API_BASE_URL}/servers/${id}`, {
                     method: 'DELETE'
                 })
 
@@ -203,7 +205,7 @@ createApp({
             if (!confirm('Are you sure you want to delete this application?')) return
             
             try {
-                const response = await fetch(`http://localhost:3000/applications/${id}`, {
+                const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
                     method: 'DELETE'
                 })
 
