@@ -273,7 +273,11 @@ async def delete_server(server_id: int):
         cursor.execute('DELETE FROM servers WHERE id = ?', (server_id,))
         conn.commit()
         
-        return {"message": "Server deleted successfully"}
+        return {"message": "Server deleted successfully", "id": server_id}
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     except Exception as e:
         if conn:
             conn.rollback()

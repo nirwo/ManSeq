@@ -27,7 +27,10 @@ createApp({
                 name: '',
                 description: ''
             },
-            sampleCsvUrl: 'template.csv'
+            sampleCsvUrl: 'template.csv',
+            searchQuery: '',
+            filteredServers: [],
+            filteredApplications: []
         }
     },
     computed: {
@@ -66,6 +69,7 @@ createApp({
                 if (!response.ok) throw new Error('Failed to fetch servers')
                 const data = await response.json()
                 this.servers = data.servers || []
+                this.filterItems()
             } catch (error) {
                 this.showError('Error loading servers: ' + error.message)
             }
@@ -76,15 +80,38 @@ createApp({
                 if (!response.ok) throw new Error('Failed to fetch applications')
                 const data = await response.json()
                 this.applications = data.applications || []
+                this.filterItems()
             } catch (error) {
                 this.showError('Error loading applications: ' + error.message)
             }
         },
+        filterItems() {
+            const query = this.searchQuery.toLowerCase()
+            
+            // Filter servers
+            this.filteredServers = this.servers.filter(server => 
+                server.name.toLowerCase().includes(query) ||
+                server.type.toLowerCase().includes(query) ||
+                server.owner_name.toLowerCase().includes(query) ||
+                server.hostname.toLowerCase().includes(query) ||
+                (server.shutdown_status && server.shutdown_status.toLowerCase().includes(query))
+            )
+            
+            // Filter applications
+            this.filteredApplications = this.applications.filter(app =>
+                app.name.toLowerCase().includes(query) ||
+                app.description.toLowerCase().includes(query)
+            )
+        },
         getServersByApp(appId) {
             if (!appId) {
-                return this.servers.filter(server => !server.application_id)
+                return this.searchQuery 
+                    ? this.filteredServers.filter(server => !server.application_id)
+                    : this.servers.filter(server => !server.application_id)
             }
-            return this.servers.filter(server => server.application_id === appId)
+            return this.searchQuery 
+                ? this.filteredServers.filter(s => s.application_id === appId)
+                : this.servers.filter(s => s.application_id === appId)
         },
         getAppName(appId) {
             if (!appId) return 'No Application'
@@ -189,17 +216,23 @@ createApp({
             }
         },
         async deleteServer(serverId) {
-            if (!confirm('Are you sure you want to delete this server?')) return
-            
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/${serverId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
                 })
                 
-                if (!response.ok) throw new Error('Failed to delete server')
+                const data = await response.json()
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to delete server')
+                }
                 
                 // Remove from local state
                 this.servers = this.servers.filter(s => s.id !== serverId)
+                this.filterItems() // Update filtered results
                 this.showSuccess('Server deleted successfully')
             } catch (error) {
                 this.showError('Error deleting server: ' + error.message)
