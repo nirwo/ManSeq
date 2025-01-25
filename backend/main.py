@@ -232,10 +232,14 @@ async def import_csv(file: UploadFile = File(...)):
     csv_data = content.decode()
     reader = csv.DictReader(io.StringIO(csv_data))
     
+    # Define valid server types
+    VALID_TYPES = {'WEB', 'DB', 'APP', 'CACHE', 'QUEUE', 'WORKER'}
+    
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         for row in reader:
             try:
+                # Handle team/application
                 app_name = row.get('team', '')  
                 app_id = None
                 if app_name:
@@ -254,13 +258,18 @@ async def import_csv(file: UploadFile = File(...)):
                     port = int(port) if port else 80
                 except (ValueError, TypeError):
                     port = 80
+                
+                # Handle server type
+                server_type = row.get('type', '').upper()
+                if not server_type or server_type not in VALID_TYPES:
+                    server_type = 'WEB'  # Default to WEB if type is missing or invalid
                         
                 cursor.execute(
                     '''INSERT INTO servers 
                        (name, type, status, owner_name, owner_contact, hostname, port, application_id)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                     (row['name'], 
-                     'WEB',  
+                     server_type,  
                      'Pending', 
                      row.get('team', ''),  
                      '',  
