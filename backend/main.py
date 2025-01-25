@@ -235,31 +235,41 @@ async def import_csv(file: UploadFile = File(...)):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         for row in reader:
-            app_name = row.get('team', '')  
-            app_id = None
-            if app_name:
-                cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
-                result = cursor.fetchone()
-                if result:
-                    app_id = result[0]
-                else:
-                    cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
-                                 (app_name, f"Application for {app_name}"))
-                    app_id = cursor.lastrowid
-                    
-            cursor.execute(
-                '''INSERT INTO servers 
-                   (name, type, status, owner_name, owner_contact, hostname, port, application_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                (row['name'], 
-                 'WEB',  
-                 'Pending', 
-                 row.get('team', ''),  
-                 '',  
-                 row.get('host', ''), 
-                 int(row.get('port', 80)), 
-                 app_id)
-            )
+            try:
+                app_name = row.get('team', '')  
+                app_id = None
+                if app_name:
+                    cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
+                    result = cursor.fetchone()
+                    if result:
+                        app_id = result[0]
+                    else:
+                        cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
+                                     (app_name, f"Application for {app_name}"))
+                        app_id = cursor.lastrowid
+                
+                # Handle port conversion safely
+                port = row.get('port', '')
+                try:
+                    port = int(port) if port else 80
+                except (ValueError, TypeError):
+                    port = 80
+                        
+                cursor.execute(
+                    '''INSERT INTO servers 
+                       (name, type, status, owner_name, owner_contact, hostname, port, application_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (row['name'], 
+                     'WEB',  
+                     'Pending', 
+                     row.get('team', ''),  
+                     '',  
+                     row.get('host', ''), 
+                     port,
+                     app_id)
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error importing row {row.get('name', 'unknown')}: {str(e)}")
     return {"message": "Import successful"}
 
 if __name__ == "__main__":
