@@ -15,7 +15,7 @@ A modern web application for monitoring and managing data center systems, built 
 - Node.js 16.x or higher
 - npm or yarn
 
-## Installation
+## Quick Start
 
 1. **Clone the repository**
    ```bash
@@ -23,7 +23,11 @@ A modern web application for monitoring and managing data center systems, built 
    cd datacenter-shutdown-manager
    ```
 
-2. **Set up the Backend**
+2. **Check the example data format**
+   - View [template.csv](template.csv) for the required format
+   - See [sample_data.csv](sample_data.csv) for example entries
+
+3. **Set up the Backend**
    ```bash
    # Create and activate virtual environment
    python -m venv venv
@@ -34,7 +38,7 @@ A modern web application for monitoring and managing data center systems, built 
    pip install -r requirements.txt
    ```
 
-3. **Set up the Frontend**
+4. **Set up the Frontend**
    ```bash
    # Install Node.js dependencies
    cd frontend
@@ -84,8 +88,10 @@ datacenter-shutdown-manager/
 │   ├── index.html       # Main HTML file
 │   ├── app.js          # Vue application
 │   └── package.json    # Node.js dependencies
-├── start.sh           # Startup script
-└── README.md         # This file
+├── template.csv        # CSV template with required columns
+├── sample_data.csv    # Example data file
+├── start.sh          # Startup script
+└── README.md        # This file
 ```
 
 ## Usage
@@ -106,8 +112,8 @@ datacenter-shutdown-manager/
 
 Two example CSV files are provided to help you understand the data format:
 
-1. **template.csv**: Basic template showing the required columns and format
-2. **sample_data.csv**: Sample data with example entries
+1. **[template.csv](template.csv)**: Basic template showing the required columns and format
+2. **[sample_data.csv](sample_data.csv)**: Sample data with example entries
 
 The CSV files should follow this structure:
 - System Name
