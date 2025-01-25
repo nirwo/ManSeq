@@ -37,21 +37,22 @@ def init_db():
         # Create tables
         conn.execute('''CREATE TABLE IF NOT EXISTS applications
             (id INTEGER PRIMARY KEY,
-             name TEXT UNIQUE,
+             name TEXT NOT NULL UNIQUE,
              description TEXT)''')
-            
+        
         conn.execute('''CREATE TABLE IF NOT EXISTS servers
             (id INTEGER PRIMARY KEY,
-             name TEXT,
-             type TEXT,
-             status TEXT,
+             name TEXT NOT NULL,
+             type TEXT NOT NULL,
+             status TEXT DEFAULT 'Unknown',
+             shutdown_status TEXT DEFAULT 'Not Started',
              owner_name TEXT,
              owner_contact TEXT,
              hostname TEXT,
              port INTEGER DEFAULT 80,
              application_id INTEGER,
-             FOREIGN KEY(application_id) REFERENCES applications(id))''')
-        
+             FOREIGN KEY (application_id) REFERENCES applications (id))''')
+            
         # Add sample data
         try:
             # Sample applications
@@ -81,9 +82,9 @@ def init_db():
             
             for server in servers:
                 conn.execute('''
-                    INSERT INTO servers (name, type, status, owner_name, owner_contact, hostname, port, application_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', server)
+                    INSERT INTO servers (name, type, status, shutdown_status, owner_name, owner_contact, hostname, port, application_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', server + ('Not Started',))
         except sqlite3.IntegrityError:
             # Sample data already exists
             pass
@@ -200,12 +201,13 @@ async def create_server(server_data: dict):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO servers (name, type, status, owner_name, owner_contact, hostname, port, application_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO servers (name, type, status, shutdown_status, owner_name, owner_contact, hostname, port, application_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             server_data["name"],
             server_data["type"],
             "Pending",
+            "Not Started",
             server_data["owner_name"],
             server_data["owner_contact"],
             server_data.get("hostname", ""),
@@ -224,23 +226,33 @@ async def update_server(server_id: int, server_data: dict):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE servers 
-            SET name=?, type=?, owner_name=?, owner_contact=?, hostname=?, port=?, application_id=?
-            WHERE id=?
-        ''', (
-            server_data["name"],
-            server_data["type"],
-            server_data["owner_name"],
-            server_data["owner_contact"],
-            server_data.get("hostname", ""),
-            server_data.get("port", 80),
-            server_data.get("application_id"),
-            server_id
-        ))
+        
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = []
+        for field in ['name', 'type', 'status', 'shutdown_status', 'owner_name', 
+                     'owner_contact', 'hostname', 'port', 'application_id']:
+            if field in server_data:
+                update_fields.append(f"{field} = ?")
+                params.append(server_data[field])
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+            
+        query = f'''UPDATE servers SET {", ".join(update_fields)} WHERE id = ?'''
+        params.append(server_id)
+        
+        cursor.execute(query, params)
+        conn.commit()
+        
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Server not found")
-        return {"id": server_id, **server_data}
+            
+        # Return updated server data
+        cursor.execute('SELECT * FROM servers WHERE id = ?', (server_id,))
+        columns = [col[0] for col in cursor.description]
+        server = dict(zip(columns, cursor.fetchone()))
+        return server
     finally:
         if conn:
             conn.close()
@@ -303,11 +315,12 @@ async def import_csv(file: UploadFile = File(...)):
                         
                 cursor.execute(
                     '''INSERT INTO servers 
-                       (name, type, status, owner_name, owner_contact, hostname, port, application_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                       (name, type, status, shutdown_status, owner_name, owner_contact, hostname, port, application_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     (server_name,  # Use type-specific name for the server
                      server_type,  
                      'Pending', 
+                     'Not Started',
                      row.get('team', ''),  # Team as owner
                      '',  
                      row.get('host', ''), 

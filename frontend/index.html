@@ -97,17 +97,40 @@
                     <div class="space-y-4">
                         <div v-for="server in getServersByApp(app.id)" :key="server.id" 
                              class="border p-4 rounded">
-                            <div class="flex items-center mb-2">
-                                <span class="status-indicator" 
-                                      :class="'status-' + server.status.toLowerCase()"></span>
-                                <span class="font-medium">{{ server.name }}</span>
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center">
+                                    <span class="status-indicator" 
+                                          :class="getStatusClass(server.status)"></span>
+                                    <span class="font-medium">{{ server.name }}</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <!-- Shutdown Status Controls -->
+                                    <select v-model="server.shutdown_status" 
+                                            @change="updateShutdownStatus(server)"
+                                            class="rounded border p-1 text-sm">
+                                        <option value="Not Started">Not Started</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Completed">Completed</option>
+                                    </select>
+                                    <button @click="editServer(server)" 
+                                            class="text-blue-600 hover:text-blue-800">
+                                        Edit
+                                    </button>
+                                    <button @click="deleteServer(server.id)" 
+                                            class="text-red-600 hover:text-red-800">
+                                        Delete
+                                    </button>
+                                </div>
                             </div>
                             <div class="text-sm text-gray-600">
                                 <p>Type: {{ server.type }}</p>
-                                <p>Status: {{ server.status }}</p>
+                                <p>Host: {{ server.hostname }}:{{ server.port }}</p>
                                 <p>Owner: {{ server.owner_name }}</p>
-                                <p>Contact: {{ server.owner_contact }}</p>
-                                <p v-if="server.hostname">Host: {{ server.hostname }}:{{ server.port }}</p>
+                                <p>Shutdown Status: <span :class="{
+                                    'text-yellow-600': server.shutdown_status === 'In Progress',
+                                    'text-green-600': server.shutdown_status === 'Completed',
+                                    'text-gray-600': server.shutdown_status === 'Not Started'
+                                }">{{ server.shutdown_status }}</span></p>
                             </div>
                         </div>
                     </div>

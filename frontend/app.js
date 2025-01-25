@@ -230,7 +230,26 @@ createApp({
                 'pending': 'status-pending',
                 'unknown': 'status-unknown'
             }[status] || 'status-unknown'
-        }
+        },
+        async updateShutdownStatus(server) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${server.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        shutdown_status: server.shutdown_status
+                    })
+                })
+                
+                if (!response.ok) throw new Error('Failed to update status')
+                
+                this.showSuccess('Server status updated successfully')
+            } catch (error) {
+                this.showError('Error updating status: ' + error.message)
+                // Revert status on error
+                await this.fetchServers()
+            }
+        },
     },
     async mounted() {
         await this.fetchApplications()
