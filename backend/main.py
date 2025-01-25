@@ -258,4 +258,10 @@ async def import_csv(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=3000, help="Port to bind to")
+    args = parser.parse_args()
+    
+    uvicorn.run("main:app", host=args.host, port=args.port, reload=True)
