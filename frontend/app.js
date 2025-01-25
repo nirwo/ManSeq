@@ -8,8 +8,7 @@ createApp({
         return {
             applications: [],
             servers: [],
-            currentServer: null,
-            showServerModal: false,
+            activeTab: 'applications',
             errorMessage: '',
             successMessage: '',
             sampleCsvUrl: 'template.csv'
@@ -90,6 +89,21 @@ createApp({
                 this.showSuccess('Server deleted successfully')
             } catch (error) {
                 this.showError('Error deleting server: ' + error.message)
+            }
+        },
+        async deleteApplication(id) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
+                    method: 'DELETE'
+                })
+
+                if (!response.ok) throw new Error('Failed to delete application')
+
+                await this.fetchApplications()
+                await this.fetchServers()
+                this.showSuccess('Application deleted successfully')
+            } catch (error) {
+                this.showError('Error deleting application: ' + error.message)
             }
         },
         getStatusClass(status) {
