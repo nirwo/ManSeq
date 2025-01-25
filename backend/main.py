@@ -239,18 +239,17 @@ async def import_csv(file: UploadFile = File(...)):
         cursor = conn.cursor()
         for row in reader:
             try:
-                # Handle team/application
-                app_name = row.get('team', '')  
-                app_id = None
-                if app_name:
-                    cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
-                    result = cursor.fetchone()
-                    if result:
-                        app_id = result[0]
-                    else:
-                        cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
-                                     (app_name, f"Application for {app_name}"))
-                        app_id = cursor.lastrowid
+                # Create/get application using the name field
+                app_name = row['name']
+                cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
+                result = cursor.fetchone()
+                if result:
+                    app_id = result[0]
+                else:
+                    # Create new application
+                    cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
+                                 (app_name, f"Application managed by {row.get('team', 'Unknown Team')}"))
+                    app_id = cursor.lastrowid
                 
                 # Handle port conversion safely
                 port = row.get('port', '')
@@ -263,15 +262,18 @@ async def import_csv(file: UploadFile = File(...)):
                 server_type = row.get('type', '').upper()
                 if not server_type or server_type not in VALID_TYPES:
                     server_type = 'WEB'  # Default to WEB if type is missing or invalid
+                
+                # Create server entry with component name based on type
+                server_name = f"{app_name} {server_type.capitalize()}"
                         
                 cursor.execute(
                     '''INSERT INTO servers 
                        (name, type, status, owner_name, owner_contact, hostname, port, application_id)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (row['name'], 
+                    (server_name,  # Use type-specific name for the server
                      server_type,  
                      'Pending', 
-                     row.get('team', ''),  
+                     row.get('team', ''),  # Team as owner
                      '',  
                      row.get('host', ''), 
                      port,
