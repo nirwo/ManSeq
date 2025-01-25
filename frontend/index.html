@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Datacenter Manager</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <link href="dist/styles.css" rel="stylesheet">
+    <title>Server Manager</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .status-indicator {
             width: 12px;
@@ -16,84 +14,60 @@
         }
         .status-online { background-color: #10B981; }
         .status-offline { background-color: #EF4444; }
-        .status-error { background-color: #F59E0B; }
-        .status-pending { background-color: #6B7280; }
-        .status-unknown { background-color: #9CA3AF; }
-        .error-message {
-            background-color: #FEE2E2;
-            border: 1px solid #EF4444;
-            color: #B91C1C;
-            padding: 0.5rem;
-            border-radius: 0.375rem;
-            margin-bottom: 1rem;
-        }
-        .success-message {
-            background-color: #D1FAE5;
-            border: 1px solid #10B981;
-            color: #047857;
-            padding: 0.5rem;
-            border-radius: 0.375rem;
-            margin-bottom: 1rem;
-        }
+        .status-pending { background-color: #F59E0B; }
+        .status-error { background-color: #7C3AED; }
+        .status-unknown { background-color: #6B7280; }
     </style>
 </head>
-<body class="bg-gray-100">
-    <div id="app" class="container mx-auto px-4 py-8">
-        <!-- Error/Success Messages -->
-        <div v-if="errorMessage" class="error-message">
-            {{ errorMessage }}
-            <button @click="errorMessage = ''" class="float-right">&times;</button>
-        </div>
-        <div v-if="successMessage" class="success-message">
-            {{ successMessage }}
-            <button @click="successMessage = ''" class="float-right">&times;</button>
-        </div>
-
-        <nav class="mb-8">
-            <ul class="flex space-x-4">
-                <li>
-                    <a href="#" @click="currentView = 'servers'" 
-                       :class="{'text-blue-600': currentView === 'servers'}" 
-                       class="font-medium">Servers</a>
-                </li>
-                <li>
-                    <a href="#" @click="currentView = 'admin'" 
-                       :class="{'text-blue-600': currentView === 'admin'}" 
-                       class="font-medium">Admin</a>
-                </li>
-                <li>
-                    <a href="#" @click="currentView = 'owners'" 
-                       :class="{'text-blue-600': currentView === 'owners'}" 
-                       class="font-medium">Owners</a>
-                </li>
-                <li>
-                    <a href="#" @click="currentView = 'status'" 
-                       :class="{'text-blue-600': currentView === 'status'}" 
-                       class="font-medium">Status Overview</a>
-                </li>
-            </ul>
-        </nav>
-
-        <!-- Servers View -->
-        <div v-if="currentView === 'servers'" class="space-y-6">
-            <div class="flex justify-between items-center">
-                <h1 class="text-2xl font-bold">Datacenter Servers</h1>
-                <div class="space-x-2">
-                    <a href="template.csv" download 
-                       class="text-blue-600 hover:text-blue-800">Download Template CSV</a>
-                    <input type="file" @change="handleFileUpload" accept=".csv" 
-                           class="hidden" ref="fileInput">
-                    <button @click="$refs.fileInput.click()" 
-                            class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                        Import CSV
-                    </button>
-                </div>
+<body class="bg-gray-50">
+    <div id="app" class="min-h-screen">
+        <div class="container mx-auto p-4">
+            <h1 class="text-2xl font-bold mb-4">Server Manager</h1>
+            
+            <!-- Search Bar -->
+            <div class="mb-4">
+                <input type="text" 
+                       v-model="searchQuery" 
+                       @input="filterItems"
+                       placeholder="Search servers, applications, owners..." 
+                       class="w-full p-2 border rounded shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div v-for="app in applications" :key="app.id" 
-                     class="bg-white p-6 rounded-lg shadow-md">
-                    <h2 class="text-xl font-semibold mb-4">{{ app.name }}</h2>
+            <!-- Tabs -->
+            <div class="mb-4">
+                <button @click="activeTab = 'applications'"
+                        :class="{'bg-blue-500 text-white': activeTab === 'applications',
+                                'bg-gray-200': activeTab !== 'applications'}"
+                        class="px-4 py-2 rounded-l">
+                    Applications
+                </button>
+                <button @click="activeTab = 'servers'"
+                        :class="{'bg-blue-500 text-white': activeTab === 'servers',
+                                'bg-gray-200': activeTab !== 'servers'}"
+                        class="px-4 py-2 rounded-r">
+                    Servers
+                </button>
+            </div>
+
+            <!-- Applications View -->
+            <div v-if="activeTab === 'applications'" class="space-y-4">
+                <div v-for="app in filteredApplications" :key="app.id" class="bg-white p-4 rounded shadow">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">{{ app.name }}</h2>
+                        <div class="space-x-2">
+                            <button @click="editApplication(app)" 
+                                    class="text-blue-600 hover:text-blue-800">
+                                Edit
+                            </button>
+                            <button @click="deleteApplication(app.id)"
+                                    class="text-red-600 hover:text-red-800">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-gray-600 mb-4">{{ app.description }}</p>
+                    
+                    <!-- Servers in this application -->
                     <div class="space-y-4">
                         <div v-for="server in getServersByApp(app.id)" :key="server.id" 
                              class="border p-4 rounded">
@@ -136,253 +110,59 @@
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Admin View -->
-        <div v-if="currentView === 'admin'" class="space-y-6">
-            <div class="flex justify-between items-center">
-                <h1 class="text-2xl font-bold">Admin Panel</h1>
-                <button @click="showNewServerModal = true" 
-                        class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-                    Add Server
-                </button>
-            </div>
-
-            <!-- Applications Section -->
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-xl font-semibold mb-4">Applications</h2>
-                <div class="space-y-4">
-                    <div class="flex items-center space-x-4">
-                        <input v-model="newApp.name" placeholder="Application Name" 
-                               class="border p-2 rounded">
-                        <input v-model="newApp.description" placeholder="Description" 
-                               class="border p-2 rounded flex-grow">
-                        <button @click="createApplication" 
-                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                            Add Application
-                        </button>
+            <!-- Servers View -->
+            <div v-if="activeTab === 'servers'" class="space-y-4">
+                <div v-for="server in filteredServers" :key="server.id" 
+                     class="bg-white p-4 rounded shadow">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center">
+                            <span class="status-indicator" 
+                                  :class="getStatusClass(server.status)"></span>
+                            <span class="font-medium">{{ server.name }}</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <select v-model="server.shutdown_status" 
+                                    @change="updateShutdownStatus(server)"
+                                    class="rounded border p-1 text-sm">
+                                <option value="Not Started">Not Started</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                            <button @click="editServer(server)" 
+                                    class="text-blue-600 hover:text-blue-800">
+                                Edit
+                            </button>
+                            <button @click="deleteServer(server.id)" 
+                                    class="text-red-600 hover:text-red-800">
+                                Delete
+                            </button>
+                        </div>
                     </div>
-                    <table class="w-full">
-                        <thead>
-                            <tr class="text-left">
-                                <th class="p-2">Name</th>
-                                <th class="p-2">Description</th>
-                                <th class="p-2">Servers</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="app in applications" :key="app.id" class="border-t">
-                                <td class="p-2">{{ app.name }}</td>
-                                <td class="p-2">{{ app.description }}</td>
-                                <td class="p-2">{{ getServersByApp(app.id).length }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Servers Table -->
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-xl font-semibold mb-4">Servers</h2>
-                <table class="w-full">
-                    <thead>
-                        <tr class="text-left">
-                            <th class="p-2">Status</th>
-                            <th class="p-2">Name</th>
-                            <th class="p-2">Type</th>
-                            <th class="p-2">Application</th>
-                            <th class="p-2">Owner</th>
-                            <th class="p-2">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="server in servers" :key="server.id" class="border-t">
-                            <td class="p-2">
-                                <span class="status-indicator" 
-                                      :class="'status-' + server.status.toLowerCase()"></span>
-                            </td>
-                            <td class="p-2">{{ server.name }}</td>
-                            <td class="p-2">{{ server.type }}</td>
-                            <td class="p-2">{{ getAppName(server.application_id) }}</td>
-                            <td class="p-2">{{ server.owner_name }}</td>
-                            <td class="p-2">
-                                <button @click="editServer(server)" 
-                                        class="text-blue-600 hover:text-blue-800 mr-2">Edit</button>
-                                <button @click="deleteServer(server.id)" 
-                                        class="text-red-600 hover:text-red-800">Delete</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Status Overview -->
-        <div v-if="currentView === 'status'" class="space-y-6">
-            <h1 class="text-2xl font-bold mb-6">System Status Overview</h1>
-            
-            <!-- Status Summary -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div class="bg-white p-4 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-2">Total Systems</h3>
-                    <p class="text-3xl">{{ servers.length }}</p>
-                </div>
-                <div class="bg-white p-4 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-2">Online</h3>
-                    <p class="text-3xl text-green-600">{{ servers.filter(s => s.status.toLowerCase() === 'online').length }}</p>
-                </div>
-                <div class="bg-white p-4 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-2">Offline</h3>
-                    <p class="text-3xl text-red-600">{{ servers.filter(s => s.status.toLowerCase() === 'offline').length }}</p>
-                </div>
-                <div class="bg-white p-4 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-2">Issues</h3>
-                    <p class="text-3xl text-yellow-600">{{ servers.filter(s => s.status.toLowerCase() === 'error').length }}</p>
+                    <div class="text-sm text-gray-600">
+                        <p>Application: {{ getAppName(server.application_id) }}</p>
+                        <p>Type: {{ server.type }}</p>
+                        <p>Host: {{ server.hostname }}:{{ server.port }}</p>
+                        <p>Owner: {{ server.owner_name }}</p>
+                        <p>Shutdown Status: <span :class="{
+                            'text-yellow-600': server.shutdown_status === 'In Progress',
+                            'text-green-600': server.shutdown_status === 'Completed',
+                            'text-gray-600': server.shutdown_status === 'Not Started'
+                        }">{{ server.shutdown_status }}</span></p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Status Lists -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Offline Systems -->
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h2 class="text-xl font-semibold mb-4 text-red-600">Offline Systems</h2>
-                    <div class="space-y-4">
-                        <div v-for="server in servers.filter(s => s.status.toLowerCase() === 'offline')" 
-                             :key="server.id" 
-                             class="border p-4 rounded">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <h3 class="font-medium">{{ server.name }}</h3>
-                                    <p class="text-sm text-gray-600">{{ getAppName(server.application_id) }}</p>
-                                </div>
-                                <div class="text-sm text-right">
-                                    <p>Owner: {{ server.owner_name }}</p>
-                                    <p>Contact: {{ server.owner_contact }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-if="!servers.filter(s => s.status.toLowerCase() === 'offline').length" 
-                             class="text-gray-500 text-center py-4">
-                            No offline systems
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Systems with Issues -->
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h2 class="text-xl font-semibold mb-4 text-yellow-600">Systems with Issues</h2>
-                    <div class="space-y-4">
-                        <div v-for="server in servers.filter(s => s.status.toLowerCase() === 'error')" 
-                             :key="server.id" 
-                             class="border p-4 rounded">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <h3 class="font-medium">{{ server.name }}</h3>
-                                    <p class="text-sm text-gray-600">{{ getAppName(server.application_id) }}</p>
-                                </div>
-                                <div class="text-sm text-right">
-                                    <p>Owner: {{ server.owner_name }}</p>
-                                    <p>Contact: {{ server.owner_contact }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-if="!servers.filter(s => s.status.toLowerCase() === 'error').length" 
-                             class="text-gray-500 text-center py-4">
-                            No systems with issues
-                        </div>
-                    </div>
-                </div>
+            <!-- Error Toast -->
+            <div v-if="showError" 
+                 class="fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow">
+                {{ errorMessage }}
             </div>
-        </div>
 
-        <!-- Owners View -->
-        <div v-if="currentView === 'owners'" class="space-y-6">
-            <h1 class="text-2xl font-bold mb-6">System Owners</h1>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div v-for="owner in uniqueOwners" :key="owner.name" 
-                     class="bg-white p-6 rounded-lg shadow-md">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h2 class="text-xl font-semibold">{{ owner.name }}</h2>
-                            <p class="text-gray-600">{{ owner.contact }}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-lg font-medium">{{ owner.servers.length }}</p>
-                            <p class="text-sm text-gray-600">Systems</p>
-                        </div>
-                    </div>
-                    
-                    <div class="space-y-3">
-                        <div v-for="server in owner.servers" :key="server.id" 
-                             class="flex items-center justify-between border-t pt-2">
-                            <div>
-                                <p class="font-medium">{{ server.name }}</p>
-                                <p class="text-sm text-gray-600">{{ getAppName(server.application_id) }}</p>
-                            </div>
-                            <div class="flex items-center">
-                                <span class="status-indicator" 
-                                      :class="'status-' + server.status.toLowerCase()"></span>
-                                <span class="text-sm">{{ server.status }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- New/Edit Server Modal -->
-        <div v-if="showNewServerModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div class="bg-white p-6 rounded-lg w-full max-w-lg">
-                <h2 class="text-xl font-semibold mb-4">{{ editingServer ? 'Edit' : 'New' }} Server</h2>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Name</label>
-                        <input v-model="newServer.name" class="border p-2 rounded w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Type</label>
-                        <select v-model="newServer.type" class="border p-2 rounded w-full">
-                            <option value="WEB">Web</option>
-                            <option value="DATABASE">Database</option>
-                            <option value="APPLICATION">Application</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Application</label>
-                        <select v-model="newServer.application_id" class="border p-2 rounded w-full">
-                            <option v-for="app in applications" :key="app.id" :value="app.id">
-                                {{ app.name }}
-                            </option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Hostname</label>
-                        <input v-model="newServer.hostname" class="border p-2 rounded w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Port</label>
-                        <input v-model="newServer.port" type="number" class="border p-2 rounded w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Owner Name</label>
-                        <input v-model="newServer.owner_name" class="border p-2 rounded w-full">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Owner Contact</label>
-                        <input v-model="newServer.owner_contact" class="border p-2 rounded w-full">
-                    </div>
-                </div>
-                <div class="mt-6 flex justify-end space-x-4">
-                    <button @click="showNewServerModal = false" 
-                            class="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">
-                        Cancel
-                    </button>
-                    <button @click="saveServer" 
-                            class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                        Save
-                    </button>
-                </div>
+            <!-- Success Toast -->
+            <div v-if="showSuccess"
+                 class="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow">
+                {{ successMessage }}
             </div>
         </div>
     </div>
