@@ -1,6 +1,7 @@
 const { createApp } = Vue
 
-const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : `http://${window.location.hostname}:3000`
+// Use current origin's hostname for API
+const API_BASE_URL = `http://${window.location.hostname}:3000`
 
 createApp({
     data() {
