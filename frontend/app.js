@@ -8,7 +8,8 @@ createApp({
         return {
             applications: [],
             servers: [],
-            activeTab: 'applications',
+            activeView: 'servers',
+            showNewServerModal: false,
             errorMessage: '',
             successMessage: '',
             sampleCsvUrl: 'template.csv'

@@ -23,25 +23,27 @@
 </head>
 <body class="bg-gray-50">
     <div id="app" class="min-h-screen">
-        <div class="container mx-auto p-4">
-            <h1 class="text-2xl font-bold mb-4">Server Manager</h1>
-            
-            <!-- Tabs -->
-            <div class="mb-4">
-                <button @click="activeTab = 'applications'"
-                        :class="{'bg-blue-500 text-white': activeTab === 'applications',
-                                'bg-gray-200': activeTab !== 'applications'}"
-                        class="px-4 py-2 rounded-l">
-                    Applications
-                </button>
-                <button @click="activeTab = 'servers'"
-                        :class="{'bg-blue-500 text-white': activeTab === 'servers',
-                                'bg-gray-200': activeTab !== 'servers'}"
-                        class="px-4 py-2 rounded-r">
-                    Servers
-                </button>
+        <nav class="bg-white shadow mb-4">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <h1 class="text-2xl font-bold">Server Manager</h1>
+                    <div class="flex space-x-4">
+                        <button @click="activeTab = 'servers'"
+                                :class="{'text-blue-600 font-bold': activeTab === 'servers'}"
+                                class="hover:text-blue-600">
+                            Servers
+                        </button>
+                        <button @click="activeTab = 'applications'"
+                                :class="{'text-blue-600 font-bold': activeTab === 'applications'}"
+                                class="hover:text-blue-600">
+                            Applications
+                        </button>
+                    </div>
+                </div>
             </div>
-
+        </nav>
+        <div class="container mx-auto p-4">
+            
             <!-- Applications View -->
             <div v-if="activeTab === 'applications'" class="space-y-4">
                 <div v-for="app in applications" :key="app.id" class="bg-white p-4 rounded shadow">
