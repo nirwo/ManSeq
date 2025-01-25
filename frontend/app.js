@@ -24,7 +24,7 @@ createApp({
                 name: '',
                 description: ''
             },
-            sampleCsvUrl: '/template.csv'
+            sampleCsvUrl: 'template.csv'
         }
     },
     computed: {
