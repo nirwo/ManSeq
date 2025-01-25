@@ -1,0 +1,21 @@
+{
+  "name": "datacenter-shutdown-manager",
+  "version": "1.0.0",
+  "description": "Datacenter Shutdown Manager",
+  "scripts": {
+    "start": "python3 backend/main.py & npx serve frontend -l 3001",
+    "build:css": "npx tailwindcss -i ./frontend/src/styles.css -o ./frontend/dist/styles.css --minify",
+    "watch:css": "npx tailwindcss -i ./frontend/src/styles.css -o ./frontend/dist/styles.css --watch"
+  },
+  "dependencies": {
+    "serve": "^14.2.1"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.35",
+    "autoprefixer": "^10.4.17",
+    "@tailwindcss/forms": "^0.5.7",
+    "@tailwindcss/typography": "^0.5.10",
+    "@tailwindcss/aspect-ratio": "^0.4.2"
+  }
+}
