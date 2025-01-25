@@ -118,26 +118,13 @@
                                           :class="getStatusClass(server.status)"></span>
                                     <span class="font-medium">{{ server.name }}</span>
                                 </div>
-                                <!-- Server Type and Port -->
-                                <select v-model="server.type" 
-                                class="rounded border p-1 text-sm">
-                            <option v-for="(typeInfo, type) in serverTypes" 
-                                    :key="type" 
-                                    :value="type">
-                                {{ typeInfo.description }}
-                            </option>
-                        </select>
-                        <input type="number" 
-                               v-model.number="server.port"
-                               :placeholder="serverTypes[server.type].defaultPort"
-                               class="w-24 rounded border p-1 text-sm"
-                               :class="{'bg-gray-100': server.type !== 'CUSTOM'}">
+                                
                                 <div class="flex items-center space-x-2">
                                     <!-- Shutdown Status Controls -->
                                     <select v-model="server.shutdown_status" 
                                             @change="updateShutdownStatus(server)"
                                             class="rounded border p-1 text-sm">
-                                        <option value="Not Started" selected>Not Started</option>
+                                        <option value="Not Started">Not Started</option>
                                         <option value="In Progress">In Progress</option>
                                         <option value="Completed">Completed</option>
                                     </select>

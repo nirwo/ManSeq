@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import json
@@ -11,6 +11,7 @@ import asyncio
 from typing import List, Optional, Dict
 from pydantic import BaseModel
 from datetime import datetime
+import aiosqlite
 
 app = FastAPI()
 
@@ -354,6 +355,41 @@ async def import_csv(file: UploadFile = File(...)):
     finally:
         if conn:
             conn.close()
+
+@app.put("/servers/bulk-update")
+async def bulk_update_servers(request: Request):
+    try:
+        data = await request.json()
+        server_ids = data.get('server_ids', [])
+        updates = data.get('updates', {})
+        
+        # Remove None values from updates
+        updates = {k: v for k, v in updates.items() if v is not None}
+        
+        if not server_ids or not updates:
+            raise HTTPException(status_code=400, detail="No servers or updates specified")
+        
+        # Update servers in database
+        async with aiosqlite.connect(DB_PATH) as db:
+            update_fields = ', '.join([f"{k} = ?" for k in updates.keys()])
+            update_values = list(updates.values())
+            
+            # Convert server_ids to string for SQL IN clause
+            servers_str = ','.join('?' * len(server_ids))
+            
+            query = f"""
+                UPDATE servers 
+                SET {update_fields}
+                WHERE id IN ({servers_str})
+            """
+            
+            await db.execute(query, [...update_values, *server_ids])
+            await db.commit()
+        
+        return {"message": "Servers updated successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

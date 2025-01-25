@@ -10,6 +10,13 @@ createApp({
             servers: [],
             activeView: 'servers',
             showNewServerModal: false,
+            showBulkModal: false,
+            selectedServers: [],
+            bulkAction: {
+                type: null,
+                shutdown_status: null,
+                application_id: null
+            },
             searchQuery: '',
             filteredServers: [],
             filteredApplications: [],
@@ -219,7 +226,54 @@ createApp({
         showSuccess(message) {
             this.successMessage = message
             setTimeout(() => this.successMessage = '', 5000)
-        }
+        },
+        toggleServerSelection(serverId) {
+            const index = this.selectedServers.indexOf(serverId)
+            if (index === -1) {
+                this.selectedServers.push(serverId)
+            } else {
+                this.selectedServers.splice(index, 1)
+            }
+        },
+        selectAllServers() {
+            const serverList = this.searchQuery ? this.filteredServers : this.servers
+            this.selectedServers = serverList.map(s => s.id)
+        },
+        clearSelection() {
+            this.selectedServers = []
+        },
+        async applyBulkAction() {
+            if (!this.selectedServers.length) {
+                this.showError('No servers selected')
+                return
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/bulk-update`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        server_ids: this.selectedServers,
+                        updates: {
+                            type: this.bulkAction.type,
+                            shutdown_status: this.bulkAction.shutdown_status,
+                            application_id: this.bulkAction.application_id
+                        }
+                    })
+                })
+
+                if (!response.ok) throw new Error('Failed to update servers')
+
+                await this.fetchServers()
+                this.showSuccess('Bulk update successful')
+                this.selectedServers = []
+                this.showBulkModal = false
+            } catch (error) {
+                this.showError('Error updating servers: ' + error.message)
+            }
+        },
     },
     async mounted() {
         await this.fetchApplications()
