@@ -1,8 +1,6 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Server Manager</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -28,13 +26,36 @@
                 <div class="flex justify-between items-center py-4">
                     <h1 class="text-2xl font-bold">Server Manager</h1>
                     <div class="flex space-x-4">
-                        <button @click="activeTab = 'servers'"
-                                :class="{'text-blue-600 font-bold': activeTab === 'servers'}"
+                        <!-- Import CSV -->
+                        <label class="bg-green-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-green-600">
+                            Import CSV
+                            <input type="file" @change="handleFileUpload" accept=".csv" class="hidden">
+                        </label>
+                        <!-- Download Template -->
+                        <a :href="sampleCsvUrl" download class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                            Download Template
+                        </a>
+                        <!-- Add Server -->
+                        <button @click="showNewServerModal = true" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            Add Server
+                        </button>
+                    </div>
+                </div>
+                <!-- Search and Filters -->
+                <div class="flex items-center space-x-4 py-2">
+                    <input type="text" 
+                           v-model="searchQuery" 
+                           @input="filterItems"
+                           placeholder="Search servers, applications, owners..." 
+                           class="flex-1 p-2 border rounded">
+                    <div class="flex space-x-4">
+                        <button @click="activeView = 'servers'"
+                                :class="{'text-blue-600 font-bold': activeView === 'servers'}"
                                 class="hover:text-blue-600">
                             Servers
                         </button>
-                        <button @click="activeTab = 'applications'"
-                                :class="{'text-blue-600 font-bold': activeTab === 'applications'}"
+                        <button @click="activeView = 'applications'"
+                                :class="{'text-blue-600 font-bold': activeView === 'applications'}"
                                 class="hover:text-blue-600">
                             Applications
                         </button>
@@ -42,11 +63,11 @@
                 </div>
             </div>
         </nav>
+
         <div class="container mx-auto p-4">
-            
             <!-- Applications View -->
-            <div v-if="activeTab === 'applications'" class="space-y-4">
-                <div v-for="app in applications" :key="app.id" class="bg-white p-4 rounded shadow">
+            <div v-if="activeView === 'applications'" class="space-y-4">
+                <div v-for="app in filteredApplications" :key="app.id" class="bg-white p-4 rounded shadow">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-semibold">{{ app.name }}</h2>
                         <div class="space-x-2">
@@ -107,8 +128,8 @@
             </div>
 
             <!-- Servers View -->
-            <div v-if="activeTab === 'servers'" class="space-y-4">
-                <div v-for="server in servers" :key="server.id" 
+            <div v-if="activeView === 'servers'" class="space-y-4">
+                <div v-for="server in filteredServers" :key="server.id" 
                      class="bg-white p-4 rounded shadow">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center">
@@ -129,7 +150,7 @@
                                 Edit
                             </button>
                             <button @click="deleteServer(server.id)" 
-                                    class="text-red-600 hover:text-blue-800">
+                                    class="text-red-600 hover:text-red-800">
                                 Delete
                             </button>
                         </div>
@@ -164,3 +185,4 @@
     <script src="app.js"></script>
 </body>
 </html>
+Suggested terminal command
