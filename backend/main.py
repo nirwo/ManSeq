@@ -26,8 +26,14 @@ app.add_middleware(
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "servers.db")
 
+# Database connection management
+def get_db():
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         # Create tables
         conn.execute('''CREATE TABLE IF NOT EXISTS applications
             (id INTEGER PRIMARY KEY,
@@ -78,8 +84,6 @@ def init_db():
                     INSERT INTO servers (name, type, status, owner_name, owner_contact, hostname, port, application_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', server)
-            
-            conn.commit()
         except sqlite3.IntegrityError:
             # Sample data already exists
             pass
@@ -114,7 +118,7 @@ async def check_server_status(hostname: str, port: int = 80) -> str:
 async def update_all_statuses():
     while True:
         try:
-            with sqlite3.connect(DB_PATH) as conn:
+            with get_db() as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT id, hostname, port FROM servers')
                 servers = cursor.fetchall()
@@ -136,24 +140,36 @@ async def startup_event():
 # Application endpoints
 @app.get("/applications")
 async def get_applications():
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM applications')
-        columns = [col[0] for col in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        apps = cursor.fetchall()
+        return [dict(app) for app in apps]
+    finally:
+        if conn:
+            conn.close()
 
 @app.post("/applications")
 async def create_application(app_data: dict):
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
                       (app_data["name"], app_data["description"]))
         app_id = cursor.lastrowid
         return {"id": app_id, **app_data}
+    finally:
+        if conn:
+            conn.close()
 
 @app.delete("/applications/{app_id}")
 async def delete_application(app_id: int):
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         # First update any servers using this application
         cursor.execute('UPDATE servers SET application_id = NULL WHERE application_id = ?', (app_id,))
@@ -162,22 +178,32 @@ async def delete_application(app_id: int):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Application not found")
         return {"status": "success"}
+    finally:
+        if conn:
+            conn.close()
 
 @app.get("/servers")
 async def get_servers():
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT s.*, a.name as application_name 
             FROM servers s 
             LEFT JOIN applications a ON s.application_id = a.id
         ''')
-        columns = [col[0] for col in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        servers = cursor.fetchall()
+        return [dict(server) for server in servers]
+    finally:
+        if conn:
+            conn.close()
 
 @app.post("/servers")
 async def create_server(server_data: dict):
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO servers (name, type, status, owner_name, owner_contact, hostname, port, application_id)
@@ -194,10 +220,15 @@ async def create_server(server_data: dict):
         ))
         server_id = cursor.lastrowid
         return {"id": server_id, **server_data}
+    finally:
+        if conn:
+            conn.close()
 
 @app.put("/servers/{server_id}")
 async def update_server(server_id: int, server_data: dict):
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
             UPDATE servers 
@@ -216,14 +247,22 @@ async def update_server(server_id: int, server_data: dict):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Server not found")
         return {"id": server_id, **server_data}
+    finally:
+        if conn:
+            conn.close()
 
 @app.delete("/servers/{server_id}")
 async def delete_server(server_id: int):
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM servers WHERE id = ?', (server_id,))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Server not found")
+    finally:
+        if conn:
+            conn.close()
     return {"message": "Server deleted"}
 
 @app.post("/servers/import-csv")
@@ -235,7 +274,9 @@ async def import_csv(file: UploadFile = File(...)):
     # Define valid server types
     VALID_TYPES = {'WEB', 'DB', 'APP', 'CACHE', 'QUEUE', 'WORKER'}
     
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = None
+    try:
+        conn = get_db()
         cursor = conn.cursor()
         for row in reader:
             try:
@@ -280,8 +321,17 @@ async def import_csv(file: UploadFile = File(...)):
                      app_id)
                 )
             except Exception as e:
+                conn.rollback()
                 raise HTTPException(status_code=400, detail=f"Error importing row {row.get('name', 'unknown')}: {str(e)}")
-    return {"message": "Import successful"}
+        conn.commit()
+        return {"message": "Import successful"}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     import uvicorn
