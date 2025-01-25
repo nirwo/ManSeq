@@ -89,10 +89,32 @@
                 </div>
             </div>
 
-        <div class="container mx-auto p-4">
+            <!-- Bulk Selection Controls -->
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center space-x-4">
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" 
+                               @change="selectAllServers"
+                               :checked="selectedServers.length === servers.length"
+                               class="rounded border-gray-300">
+                        <span>Select All</span>
+                    </label>
+                    <button v-if="selectedServers.length"
+                            @click="clearSelection"
+                            class="text-gray-600 hover:text-gray-800">
+                        Clear Selection ({{ selectedServers.length }} selected)
+                    </button>
+                </div>
+                <button v-if="selectedServers.length"
+                        @click="showBulkModal = true"
+                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Bulk Update
+                </button>
+            </div>
+
             <!-- Applications View -->
             <div v-if="activeView === 'applications'" class="space-y-4">
-                <div v-for="app in filteredApplications" :key="app.id" class="bg-white p-4 rounded shadow">
+                <div v-for="app in applications" :key="app.id" class="bg-white p-4 rounded shadow">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-semibold">{{ app.name }}</h2>
                         <div class="space-x-2">
@@ -114,13 +136,15 @@
                              class="border p-4 rounded">
                             <div class="flex items-center justify-between mb-2">
                                 <div class="flex items-center">
+                                    <input type="checkbox" 
+                                           :checked="selectedServers.includes(server.id)"
+                                           @change="toggleServerSelection(server.id)"
+                                           class="mr-3 rounded border-gray-300">
                                     <span class="status-indicator" 
                                           :class="getStatusClass(server.status)"></span>
                                     <span class="font-medium">{{ server.name }}</span>
                                 </div>
-                                
                                 <div class="flex items-center space-x-2">
-                                    <!-- Shutdown Status Controls -->
                                     <select v-model="server.shutdown_status" 
                                             @change="updateShutdownStatus(server)"
                                             class="rounded border p-1 text-sm">
@@ -181,6 +205,10 @@
                      class="bg-white p-4 rounded shadow">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center">
+                            <input type="checkbox" 
+                                   :checked="selectedServers.includes(server.id)"
+                                   @change="toggleServerSelection(server.id)"
+                                   class="mr-3 rounded border-gray-300">
                             <span class="status-indicator" 
                                   :class="getStatusClass(server.status)"></span>
                             <span class="font-medium">{{ server.name }}</span>
@@ -235,6 +263,64 @@
                             'text-green-600': server.shutdown_status === 'Completed',
                             'text-gray-600': server.shutdown_status === 'Not Started'
                         }">{{ server.shutdown_status }}</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bulk Update Modal -->
+            <div v-if="showBulkModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                <div class="bg-white rounded-lg p-6 w-96">
+                    <h3 class="text-lg font-bold mb-4">Bulk Update Servers</h3>
+                    
+                    <div class="space-y-4">
+                        <!-- Server Type -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Server Type</label>
+                            <select v-model="bulkAction.type" class="mt-1 block w-full rounded border p-2">
+                                <option value="">No Change</option>
+                                <option v-for="(typeInfo, type) in serverTypes" 
+                                        :key="type" 
+                                        :value="type">
+                                    {{ typeInfo.description }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Shutdown Status -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Shutdown Status</label>
+                            <select v-model="bulkAction.shutdown_status" class="mt-1 block w-full rounded border p-2">
+                                <option value="">No Change</option>
+                                <option value="Not Started">Not Started</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                        </div>
+
+                        <!-- Application -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Application</label>
+                            <select v-model="bulkAction.application_id" class="mt-1 block w-full rounded border p-2">
+                                <option value="">No Change</option>
+                                <option value="null">No Application</option>
+                                <option v-for="app in applications" 
+                                        :key="app.id" 
+                                        :value="app.id">
+                                    {{ app.name }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button @click="showBulkModal = false"
+                                class="px-4 py-2 border rounded hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button @click="applyBulkAction"
+                                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            Apply
+                        </button>
                     </div>
                 </div>
             </div>
