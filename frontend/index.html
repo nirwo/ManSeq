@@ -65,6 +65,31 @@
         </nav>
 
         <div class="container mx-auto p-4">
+            <!-- KPI Summary -->
+            <div class="grid grid-cols-5 gap-4 mb-6">
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="text-sm text-gray-500">Total Servers</div>
+                    <div class="text-2xl font-bold">{{ serverStats.total }}</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="text-sm text-gray-500">Online</div>
+                    <div class="text-2xl font-bold text-green-500">{{ serverStats.online }}</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="text-sm text-gray-500">Offline</div>
+                    <div class="text-2xl font-bold text-red-500">{{ serverStats.offline }}</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="text-sm text-gray-500">Issues</div>
+                    <div class="text-2xl font-bold text-purple-500">{{ serverStats.issues }}</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="text-sm text-gray-500">Pending</div>
+                    <div class="text-2xl font-bold text-yellow-500">{{ serverStats.pending }}</div>
+                </div>
+            </div>
+
+        <div class="container mx-auto p-4">
             <!-- Applications View -->
             <div v-if="activeView === 'applications'" class="space-y-4">
                 <div v-for="app in filteredApplications" :key="app.id" class="bg-white p-4 rounded shadow">
@@ -185,4 +210,4 @@
     <script src="app.js"></script>
 </body>
 </html>
-Suggested terminal command
+Suggested terminal command 

@@ -28,6 +28,23 @@ createApp({
             sampleCsvUrl: 'template.csv'
         }
     },
+    computed: {
+        serverStats() {
+            const total = this.servers.length
+            const online = this.servers.filter(s => s.status.toLowerCase() === 'online').length
+            const offline = this.servers.filter(s => s.status.toLowerCase() === 'offline').length
+            const issues = this.servers.filter(s => s.status.toLowerCase() === 'error').length
+            const pending = this.servers.filter(s => s.status.toLowerCase() === 'pending').length
+            
+            return {
+                total,
+                online,
+                offline,
+                issues,
+                pending
+            }
+        }
+    },
     methods: {
         filterItems() {
             const query = this.searchQuery.toLowerCase()
