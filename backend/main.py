@@ -44,7 +44,7 @@ def init_db():
         conn.execute('''CREATE TABLE IF NOT EXISTS servers
             (id INTEGER PRIMARY KEY,
              name TEXT NOT NULL,
-             type TEXT NOT NULL,
+             type TEXT NOT NULL CHECK(type IN ('WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM')),
              status TEXT DEFAULT 'Unknown',
              shutdown_status TEXT DEFAULT 'Not Started',
              owner_name TEXT,
@@ -72,20 +72,20 @@ def init_db():
             cursor.execute('SELECT id, name FROM applications')
             app_ids = {name: id for id, name in cursor.fetchall()}
             
-            # Sample servers
+            # Sample servers with correct types
             servers = [
-                ("Web Server 1", "WEB", "Pending", "John Doe", "john@example.com", "google.com", 80, app_ids["E-Commerce System"]),
-                ("DB Server 1", "DATABASE", "Pending", "Jane Smith", "jane@example.com", "github.com", 443, app_ids["E-Commerce System"]),
-                ("App Server 1", "APPLICATION", "Pending", "Bob Wilson", "bob@example.com", "microsoft.com", 80, app_ids["CRM System"]),
-                ("Analytics DB", "DATABASE", "Pending", "Alice Brown", "alice@example.com", "amazon.com", 80, app_ids["Analytics Platform"]),
-                ("Load Balancer", "WEB", "Pending", "Charlie Davis", "charlie@example.com", "cloudflare.com", 443, app_ids["E-Commerce System"])
+                ("Web Server 1", "WEB", "John Doe", "john@example.com", "google.com", 80, app_ids["E-Commerce System"]),
+                ("DB Server 1", "DB_MYSQL", "Jane Smith", "jane@example.com", "github.com", 3306, app_ids["E-Commerce System"]),
+                ("App Server 1", "APP_TOMCAT", "Bob Wilson", "bob@example.com", "microsoft.com", 8080, app_ids["CRM System"]),
+                ("Analytics DB", "DB_POSTGRES", "Alice Brown", "alice@example.com", "amazon.com", 5432, app_ids["Analytics Platform"]),
+                ("Load Balancer", "HTTPS", "Charlie Davis", "charlie@example.com", "cloudflare.com", 443, app_ids["E-Commerce System"])
             ]
             
             for server in servers:
                 conn.execute('''
-                    INSERT INTO servers (name, type, status, shutdown_status, owner_name, owner_contact, hostname, port, application_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', server + ('Not Started',))
+                    INSERT INTO servers (name, type, owner_name, owner_contact, hostname, port, application_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', server)
         except sqlite3.IntegrityError:
             # Sample data already exists
             pass
@@ -130,19 +130,11 @@ async def startup_event():
 # Application endpoints
 @app.get("/applications")
 async def get_applications():
-    conn = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM applications')
-        columns = [col[0] for col in cursor.description]
-        apps = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        return {"applications": apps}  # Wrap in object
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = sqlite3.Row
+        cursor = await db.execute('SELECT * FROM applications')
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
 @app.post("/applications")
 async def create_application(app_data: dict):
@@ -177,23 +169,11 @@ async def delete_application(app_id: int):
 
 @app.get("/servers")
 async def get_servers():
-    conn = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT s.*, a.name as application_name 
-            FROM servers s
-            LEFT JOIN applications a ON s.application_id = a.id
-        ''')
-        columns = [col[0] for col in cursor.description]
-        servers = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        return {"servers": servers}  # Wrap in object to avoid empty response issues
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = sqlite3.Row
+        cursor = await db.execute('SELECT * FROM servers')
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
 @app.post("/servers")
 async def create_server(server_data: dict):
@@ -294,7 +274,7 @@ async def import_csv(file: UploadFile = File(...)):
     reader = csv.DictReader(io.StringIO(csv_data))
     
     # Define valid server types
-    VALID_TYPES = {'WEB', 'DB', 'APP', 'CACHE', 'QUEUE', 'WORKER'}
+    VALID_TYPES = {'WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM'}
     
     conn = None
     try:

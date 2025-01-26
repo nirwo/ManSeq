@@ -7,6 +7,8 @@ createApp({
         return {
             applications: [],
             servers: [],
+            filteredServers: [],
+            filteredApplications: [],
             activeView: 'servers',
             showNewServerModal: false,
             showBulkModal: false,
@@ -17,8 +19,6 @@ createApp({
                 application_id: null
             },
             searchQuery: '',
-            filteredServers: [],
-            filteredApplications: [],
             serverTypes: {
                 'WEB': { defaultPort: 80, description: 'Web Server (HTTP)' },
                 'HTTPS': { defaultPort: 443, description: 'Secure Web Server (HTTPS)' },
@@ -133,19 +133,19 @@ createApp({
             const query = this.searchQuery.toLowerCase()
             
             // Filter servers
-            this.filteredServers = this.servers.filter(server => 
-                server.name.toLowerCase().includes(query) ||
-                server.type.toLowerCase().includes(query) ||
-                server.owner_name.toLowerCase().includes(query) ||
-                server.hostname.toLowerCase().includes(query) ||
-                (server.shutdown_status && server.shutdown_status.toLowerCase().includes(query))
-            )
-            
+            this.filteredServers = Array.isArray(this.servers) ? 
+                this.servers.filter(server => 
+                    server.name.toLowerCase().includes(query) ||
+                    server.hostname.toLowerCase().includes(query) ||
+                    server.owner_name.toLowerCase().includes(query)
+                ) : []
+
             // Filter applications
-            this.filteredApplications = this.applications.filter(app =>
-                app.name.toLowerCase().includes(query) ||
-                app.description.toLowerCase().includes(query)
-            )
+            this.filteredApplications = Array.isArray(this.applications) ? 
+                this.applications.filter(app => 
+                    app.name.toLowerCase().includes(query) ||
+                    app.description.toLowerCase().includes(query)
+                ) : []
         },
         async handleFileUpload(event) {
             const file = event.target.files[0]
@@ -184,28 +184,39 @@ createApp({
         async fetchServers() {
             try {
                 const response = await fetch(`${API_BASE_URL}/servers`)
-                if (!response.ok) throw new Error('Failed to fetch servers')
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`)
+                }
                 const data = await response.json()
-                this.servers = data.servers || []
+                this.servers = data
                 this.filterItems()
             } catch (error) {
-                this.showError('Error loading servers: ' + error.message)
+                console.error('Error fetching servers:', error)
+                this.showError('Failed to load servers: ' + error.message)
             }
         },
         async fetchApplications() {
             try {
                 const response = await fetch(`${API_BASE_URL}/applications`)
-                if (!response.ok) throw new Error('Failed to fetch applications')
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`)
+                }
                 const data = await response.json()
-                this.applications = data.applications || []
+                this.applications = data
                 this.filterItems()
             } catch (error) {
-                this.showError('Error loading applications: ' + error.message)
+                console.error('Error fetching applications:', error)
+                this.showError('Failed to load applications: ' + error.message)
             }
         },
+        getDefaultPort(type) {
+            const typeConfig = this.serverTypes[type] || this.serverTypes['CUSTOM']
+            return typeConfig.defaultPort || null
+        },
         updateServerPort() {
-            if (this.newServer.type !== 'CUSTOM') {
-                this.newServer.port = this.serverTypes[this.newServer.type].defaultPort
+            const defaultPort = this.getDefaultPort(this.newServer.type)
+            if (defaultPort) {
+                this.newServer.port = defaultPort
             }
         },
         async updateShutdownStatus(server) {
