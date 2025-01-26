@@ -17,6 +17,7 @@ const app = createApp({
             showBulkModal: false,
             showImportServerModal: false,
             showImportAppModal: false,
+            showColumnMapModal: false,
             selectedServers: [],
             bulkAction: {
                 type: null,
@@ -65,7 +66,24 @@ const app = createApp({
             importData: '',
             errorMessage: '',
             successMessage: '',
-            sampleCsvUrl: 'template.csv'
+            sampleCsvUrl: 'template.csv',
+            columnMapping: {},
+            availableColumns: [],
+            csvData: null,
+            importType: null, // 'server' or 'application'
+            requiredFields: {
+                server: [
+                    { name: 'name', label: 'Name', required: true },
+                    { name: 'hostname', label: 'Hostname', required: true },
+                    { name: 'port', label: 'Port', required: true },
+                    { name: 'type', label: 'Type', required: true },
+                    { name: 'owner_name', label: 'Owner Name', required: false }
+                ],
+                application: [
+                    { name: 'name', label: 'Name', required: true },
+                    { name: 'description', label: 'Description', required: false }
+                ]
+            },
         }
     },
     computed: {
@@ -749,22 +767,34 @@ const app = createApp({
             const file = event.target.files[0];
             if (file) {
                 try {
-                    const formData = new FormData();
-                    formData.append('file', file);
+                    if (!file.name.endsWith('.csv')) {
+                        throw new Error('Please upload a CSV file');
+                    }
 
-                    const response = await fetch(`${API_BASE_URL}/servers/upload`, {
-                        method: 'POST',
-                        body: formData
+                    const content = await file.text();
+                    const lines = content.split('\n');
+                    if (lines.length < 2) {
+                        throw new Error('CSV file is empty');
+                    }
+
+                    const headers = lines[0].trim().split(',');
+                    this.availableColumns = headers;
+                    this.csvData = lines.slice(1);
+                    this.importType = 'server';
+                    this.columnMapping = {};
+                    
+                    // Auto-map columns if names match
+                    headers.forEach(header => {
+                        const normalizedHeader = header.toLowerCase().trim();
+                        if (this.requiredFields.server.some(field => field.name === normalizedHeader)) {
+                            this.columnMapping[normalizedHeader] = header;
+                        }
                     });
 
-                    if (!response.ok) throw new Error('Failed to upload file');
-                    
-                    const result = await response.json();
-                    this.showMessage(result.message);
-                    await this.fetchData();
+                    this.showColumnMapModal = true;
                     this.showImportServerModal = false;
                 } catch (error) {
-                    this.showMessage('Error uploading file: ' + error.message, true);
+                    this.showMessage('Error: ' + error.message, true);
                 }
             }
         },
@@ -773,24 +803,92 @@ const app = createApp({
             const file = event.target.files[0];
             if (file) {
                 try {
-                    const formData = new FormData();
-                    formData.append('file', file);
+                    if (!file.name.endsWith('.csv')) {
+                        throw new Error('Please upload a CSV file');
+                    }
 
-                    const response = await fetch(`${API_BASE_URL}/applications/upload`, {
-                        method: 'POST',
-                        body: formData
+                    const content = await file.text();
+                    const lines = content.split('\n');
+                    if (lines.length < 2) {
+                        throw new Error('CSV file is empty');
+                    }
+
+                    const headers = lines[0].trim().split(',');
+                    this.availableColumns = headers;
+                    this.csvData = lines.slice(1);
+                    this.importType = 'application';
+                    this.columnMapping = {};
+                    
+                    // Auto-map columns if names match
+                    headers.forEach(header => {
+                        const normalizedHeader = header.toLowerCase().trim();
+                        if (this.requiredFields.application.some(field => field.name === normalizedHeader)) {
+                            this.columnMapping[normalizedHeader] = header;
+                        }
                     });
 
-                    if (!response.ok) throw new Error('Failed to upload file');
-                    
-                    const result = await response.json();
-                    this.showMessage(result.message);
-                    await this.fetchData();
+                    this.showColumnMapModal = true;
                     this.showImportAppModal = false;
                 } catch (error) {
-                    this.showMessage('Error uploading file: ' + error.message, true);
+                    this.showMessage('Error: ' + error.message, true);
                 }
             }
+        },
+
+        async confirmMapping() {
+            try {
+                const fields = this.requiredFields[this.importType];
+                const missingRequired = fields.filter(f => f.required && !this.columnMapping[f.name]);
+                if (missingRequired.length > 0) {
+                    throw new Error(`Please map required fields: ${missingRequired.map(f => f.label).join(', ')}`);
+                }
+
+                const formData = new FormData();
+                const mappedData = this.csvData.map(line => {
+                    const values = line.split(',');
+                    const row = {};
+                    fields.forEach(field => {
+                        if (this.columnMapping[field.name]) {
+                            const colIndex = this.availableColumns.indexOf(this.columnMapping[field.name]);
+                            row[field.name] = values[colIndex]?.trim() || '';
+                        }
+                    });
+                    return row;
+                }).filter(row => Object.keys(row).length > 0);
+
+                const blob = new Blob([JSON.stringify({ data: mappedData, mapping: this.columnMapping })], { type: 'application/json' });
+                formData.append('file', blob, 'data.json');
+
+                const endpoint = this.importType === 'server' ? 'servers' : 'applications';
+                const response = await fetch(`${API_BASE_URL}/${endpoint}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Import failed');
+                }
+
+                this.showMessage(result.message);
+                await this.fetchData();
+                this.showColumnMapModal = false;
+                this.resetImport();
+            } catch (error) {
+                this.showMessage('Error: ' + error.message, true);
+            }
+        },
+
+        cancelMapping() {
+            this.showColumnMapModal = false;
+            this.resetImport();
+        },
+
+        resetImport() {
+            this.columnMapping = {};
+            this.availableColumns = [];
+            this.csvData = null;
+            this.importType = null;
         },
     },
     async mounted() {

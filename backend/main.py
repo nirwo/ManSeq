@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import json
@@ -698,21 +698,36 @@ async def import_applications(request: Request):
 async def upload_servers_csv(file: UploadFile = File(...)):
     try:
         content = await file.read()
-        csv_content = content.decode()
-        lines = csv_content.strip().split('\n')[1:]  # Skip header
+        data = json.loads(content)
+        
+        if not isinstance(data, dict) or 'data' not in data:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid data format"}
+            )
         
         servers = []
-        for line in lines:
-            name, hostname, port, type, owner_name = line.strip().split(',')
-            servers.append({
-                "name": name,
-                "hostname": hostname,
-                "port": int(port),
-                "type": type,
-                "owner_name": owner_name
-            })
+        for i, row in enumerate(data['data'], 1):
+            try:
+                server = {
+                    "name": row['name'],
+                    "hostname": row['hostname'],
+                    "port": int(row['port']),
+                    "type": row['type'],
+                    "owner_name": row.get('owner_name', '')
+                }
+                if not all([server['name'], server['hostname'], server['type']]):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Row {i}: Empty required fields"}
+                    )
+                servers.append(server)
+            except Exception as e:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Row {i}: {str(e)}"}
+                )
         
-        # Insert servers into database
         with get_db() as db:
             for server in servers:
                 db.execute(
@@ -721,37 +736,58 @@ async def upload_servers_csv(file: UploadFile = File(...)):
                 )
             db.commit()
         
-        return {"message": f"Successfully imported {len(servers)} servers"}
+        return {"message": f"Imported {len(servers)} servers"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
 @app.post("/applications/upload")
 async def upload_applications_csv(file: UploadFile = File(...)):
     try:
         content = await file.read()
-        csv_content = content.decode()
-        lines = csv_content.strip().split('\n')[1:]  # Skip header
+        data = json.loads(content)
         
-        applications = []
-        for line in lines:
-            name, description = line.strip().split(',')
-            applications.append({
-                "name": name,
-                "description": description
-            })
+        if not isinstance(data, dict) or 'data' not in data:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid data format"}
+            )
         
-        # Insert applications into database
+        apps = []
+        for i, row in enumerate(data['data'], 1):
+            try:
+                app = {
+                    "name": row['name'],
+                    "description": row.get('description', '')
+                }
+                if not app['name']:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Row {i}: Name cannot be empty"}
+                    )
+                apps.append(app)
+            except Exception as e:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Row {i}: {str(e)}"}
+                )
+        
         with get_db() as db:
-            for app in applications:
+            for app in apps:
                 db.execute(
                     "INSERT INTO applications (name, description) VALUES (?, ?)",
                     (app["name"], app["description"])
                 )
             db.commit()
         
-        return {"message": f"Successfully imported {len(applications)} applications"}
+        return {"message": f"Imported {len(apps)} applications"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
 if __name__ == "__main__":
     import uvicorn

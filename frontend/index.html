@@ -309,7 +309,39 @@
                 </div>
             </div>
         </div>
+
+        <!-- Column Mapping Modal -->
+        <div v-if="showColumnMapModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-[500px]">
+                <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Map CSV Columns</h2>
+                <div class="space-y-4">
+                    <p class="text-sm text-gray-500">Please map your CSV columns to the required fields:</p>
+                    <div v-for="field in requiredFields[importType]" :key="field.name" class="flex items-center space-x-4">
+                        <label class="w-1/3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {{ field.label }}
+                            <span class="text-red-500" v-if="field.required">*</span>
+                        </label>
+                        <select v-model="columnMapping[field.name]" 
+                                class="w-2/3 rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <option value="">-- Select Column --</option>
+                            <option v-for="col in availableColumns" :key="col" :value="col">{{ col }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end space-x-3">
+                    <button @click="cancelMapping" 
+                            class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button @click="confirmMapping" 
+                            class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                        Import
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
+    
     <script src="app.js"></script>
 </body>
 </html>
