@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import json
@@ -20,7 +21,7 @@ app = FastAPI()
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins in development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,73 +45,93 @@ def init_db():
         CREATE TABLE IF NOT EXISTS servers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            description TEXT,
-            type TEXT NOT NULL CHECK(type IN ('WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM')),
-            status TEXT DEFAULT 'Unknown',
-            shutdown_status TEXT DEFAULT 'Not Started',
-            test_response TEXT,
+            hostname TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            type TEXT NOT NULL,
             owner_name TEXT,
-            owner_contact TEXT,
-            hostname TEXT,
-            port INTEGER,
             application_id INTEGER,
+            status TEXT DEFAULT 'offline',
+            test_response TEXT,
             FOREIGN KEY (application_id) REFERENCES applications (id)
         )
         ''')
-
+        
         # Create applications table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             description TEXT,
-            status TEXT DEFAULT 'Unknown',
+            status TEXT DEFAULT 'offline',
             test_response TEXT
         )
         ''')
-
-        # Add test_response column if it doesn't exist
-        cursor.execute("PRAGMA table_info(servers)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'test_response' not in columns:
-            cursor.execute('ALTER TABLE servers ADD COLUMN test_response TEXT')
         
+        # Add status column if it doesn't exist in servers table
+        cursor.execute("PRAGMA table_info(servers)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'status' not in columns:
+            cursor.execute('ALTER TABLE servers ADD COLUMN status TEXT DEFAULT "offline"')
+            cursor.execute('ALTER TABLE servers ADD COLUMN test_response TEXT')
+            
+        # Add status column if it doesn't exist in applications table
+        cursor.execute("PRAGMA table_info(applications)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'status' not in columns:
+            cursor.execute('ALTER TABLE applications ADD COLUMN status TEXT DEFAULT "offline"')
+            cursor.execute('ALTER TABLE applications ADD COLUMN test_response TEXT')
+            
         conn.commit()
 
 init_db()
+
+async def ping_host(hostname: str) -> dict:
+    try:
+        # Run ping command with timeout
+        result = subprocess.run(['ping', '-c', '1', '-W', '2', hostname], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            return {"status": "online", "message": "Host is reachable (ping successful)"}
+        return {"status": "offline", "message": "Host is not responding to ping"}
+    except Exception as e:
+        return {"status": "offline", "message": f"Ping failed: {str(e)}"}
 
 async def check_server_status(hostname: str, port: int, server_type: str) -> dict:
     try:
         if not hostname or not port:
             return {"status": "offline", "message": "Invalid hostname or port"}
 
-        # Try to resolve the hostname first
-        try:
-            socket.gethostbyname(hostname)
-        except socket.gaierror:
-            return {"status": "offline", "message": f"Could not resolve hostname: {hostname}"}
-
-        if server_type.lower() == "http":
+        # Always try ping first
+        ping_result = await ping_host(hostname)
+        
+        # If ping succeeds, try service-specific test
+        if ping_result["status"] == "online":
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"http://{hostname}:{port}", timeout=5) as response:
-                        return {"status": "online", "message": f"HTTP server responded with status {response.status}"}
+                if server_type.lower() == "http":
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(f"http://{hostname}:{port}", timeout=5) as response:
+                                return {"status": "online", "message": f"HTTP server responded with status {response.status}"}
+                    except Exception as e:
+                        return {"status": "online", "message": f"Host reachable but HTTP service error: {str(e)}"}
+                else:
+                    # Default TCP check
+                    try:
+                        reader, writer = await asyncio.wait_for(
+                            asyncio.open_connection(hostname, port),
+                            timeout=5
+                        )
+                        writer.close()
+                        await writer.wait_closed()
+                        return {"status": "online", "message": f"TCP connection successful on port {port}"}
+                    except Exception as e:
+                        return {"status": "online", "message": f"Host reachable but service error: {str(e)}"}
             except Exception as e:
-                return {"status": "offline", "message": f"HTTP connection failed: {str(e)}"}
-        else:
-            # Default TCP check
-            try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(hostname, port),
-                    timeout=5
-                )
-                writer.close()
-                await writer.wait_closed()
-                return {"status": "online", "message": f"TCP connection successful on port {port}"}
-            except asyncio.TimeoutError:
-                return {"status": "offline", "message": f"Connection timeout on port {port}"}
-            except Exception as e:
-                return {"status": "offline", "message": f"Connection failed: {str(e)}"}
+                # Even if service test fails, if ping works we mark as online
+                return ping_result
+        
+        return ping_result
+        
     except Exception as e:
         return {"status": "offline", "message": f"Test failed: {str(e)}"}
 
@@ -626,12 +647,188 @@ async def test_all_applications():
     finally:
         db.close()
 
+@app.post("/servers/import")
+async def import_servers(request: Request):
+    try:
+        data = await request.json()
+        servers = data.get("servers", [])
+        
+        # Validate and insert servers
+        for server in servers:
+            if not all(k in server for k in ["name", "hostname", "port", "type", "owner_name"]):
+                raise HTTPException(status_code=400, detail="Invalid server data format")
+        
+        # Insert servers into database
+        with get_db() as db:
+            for server in servers:
+                db.execute(
+                    "INSERT INTO servers (name, hostname, port, type, owner_name) VALUES (?, ?, ?, ?, ?)",
+                    (server["name"], server["hostname"], server["port"], server["type"], server["owner_name"])
+                )
+            db.commit()
+        
+        return {"message": "Servers imported successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/applications/import")
+async def import_applications(request: Request):
+    try:
+        data = await request.json()
+        applications = data.get("applications", [])
+        
+        # Validate and insert applications
+        for app in applications:
+            if not all(k in app for k in ["name", "description"]):
+                raise HTTPException(status_code=400, detail="Invalid application data format")
+        
+        # Insert applications into database
+        with get_db() as db:
+            for app in applications:
+                db.execute(
+                    "INSERT INTO applications (name, description) VALUES (?, ?)",
+                    (app["name"], app["description"])
+                )
+            db.commit()
+        
+        return {"message": "Applications imported successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/servers/upload")
+async def upload_servers_csv(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        data = json.loads(content)
+        
+        if not isinstance(data, dict) or 'data' not in data:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid data format"}
+            )
+        
+        servers = []
+        for i, row in enumerate(data['data'], 1):
+            try:
+                # Validate port before creating server object
+                try:
+                    port = int(row.get('port', 0))
+                    if not (0 < port < 65536):
+                        return JSONResponse(
+                            status_code=400,
+                            content={"error": f"Row {i}: Port must be between 1 and 65535"}
+                        )
+                except ValueError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Row {i}: Invalid port number"}
+                    )
+
+                server = {
+                    "name": str(row.get('name', '')).strip(),
+                    "hostname": str(row.get('hostname', '')).strip(),
+                    "port": port,
+                    "type": str(row.get('type', '')).strip(),
+                    "owner_name": str(row.get('owner_name', '')).strip()
+                }
+                
+                # Validate required fields
+                if not all([server['name'], server['hostname'], server['type']]):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Row {i}: Name, hostname, and type are required"}
+                    )
+                
+                servers.append(server)
+            except Exception as e:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Row {i}: {str(e)}"}
+                )
+        
+        if not servers:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No valid servers found in the data"}
+            )
+        
+        with get_db() as db:
+            for server in servers:
+                db.execute(
+                    "INSERT INTO servers (name, hostname, port, type, owner_name) VALUES (?, ?, ?, ?, ?)",
+                    (server["name"], server["hostname"], server["port"], server["type"], server["owner_name"])
+                )
+            db.commit()
+        
+        return {"message": f"Successfully imported {len(servers)} servers"}
+    except json.JSONDecodeError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid JSON format"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.post("/applications/upload")
+async def upload_applications_csv(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        data = json.loads(content)
+        
+        if not isinstance(data, dict) or 'data' not in data:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid data format"}
+            )
+        
+        apps = []
+        for i, row in enumerate(data['data'], 1):
+            try:
+                app = {
+                    "name": row['name'],
+                    "description": row.get('description', '')
+                }
+                if not app['name']:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Row {i}: Name cannot be empty"}
+                    )
+                apps.append(app)
+            except Exception as e:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Row {i}: {str(e)}"}
+                )
+        
+        with get_db() as db:
+            for app in apps:
+                db.execute(
+                    "INSERT INTO applications (name, description) VALUES (?, ?)",
+                    (app["name"], app["description"])
+                )
+            db.commit()
+        
+        return {"message": f"Imported {len(apps)} applications"}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
 if __name__ == "__main__":
     import uvicorn
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=3000, help="Port to bind to")
-    args = parser.parse_args()
+    from pathlib import Path
+    import os
     
-    uvicorn.run("main:app", host=args.host, port=args.port, reload=True)
+    # Get the directory containing the script
+    script_dir = Path(__file__).parent.absolute()
+    os.chdir(script_dir)
+    
+    # Initialize database
+    init_db()
+    
+    # Run the server
+    uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)
