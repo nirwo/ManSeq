@@ -423,6 +423,201 @@ const app = Vue.createApp({
             this.showImportAppModal = false;
         }
     },
+    template: `
+        <div>
+            <div v-if="message" :class="['fixed top-4 right-4 p-4 rounded-lg', messageType === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800']">
+                {{ message }}
+            </div>
+
+            <action-buttons 
+                :active-view="activeView"
+                @view-change="activeView = $event"
+                @show-import-server="showImportServerModal = true"
+                @show-import-app="showImportAppModal = true"
+            ></action-buttons>
+
+            <import-modals
+                :show-import-server-modal="showImportServerModal"
+                :show-import-app-modal="showImportAppModal"
+                :show-column-map-modal="showColumnMapModal"
+                :required-fields="requiredFields"
+                :import-type="importType"
+                :available-columns="availableColumns"
+                :column-mapping="columnMapping"
+                @server-file-upload="handleServerFileUpload"
+                @app-file-upload="handleAppFileUpload"
+                @close-server-modal="showImportServerModal = false"
+                @close-app-modal="showImportAppModal = false"
+                @cancel-mapping="cancelMapping"
+                @confirm-mapping="confirmMapping"
+            ></import-modals>
+
+            <!-- Servers View -->
+            <div v-if="activeView === 'servers'" class="space-y-6">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Servers</h2>
+                    <div class="mb-4 grid grid-cols-3 gap-4">
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Total Servers</p>
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.servers.total }}</p>
+                        </div>
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Completed</p>
+                            <p class="text-2xl font-bold text-green-600">{{ stats.servers.completed }}</p>
+                        </div>
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">In Progress</p>
+                            <p class="text-2xl font-bold text-yellow-600">{{ stats.servers.inProgress }}</p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead>
+                                <tr>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Hostname</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Port</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Owner</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr v-for="server in servers" :key="server.id">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ server.name }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ server.hostname }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ server.port }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ server.type }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span :class="['px-2 inline-flex text-xs leading-5 font-semibold rounded-full', getStatusClass(server.status)]">
+                                            {{ server.status }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ server.owner_name }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                        <button @click="editServer(server)" class="text-blue-600 hover:text-blue-900 dark:hover:text-blue-400">Edit</button>
+                                        <button @click="testServer(server)" class="text-green-600 hover:text-green-900 dark:hover:text-green-400">Test</button>
+                                        <button @click="deleteServer(server.id)" class="text-red-600 hover:text-red-900 dark:hover:text-red-400">Delete</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Applications View -->
+            <div v-if="activeView === 'applications'" class="space-y-6">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Applications</h2>
+                    <div class="mb-4 grid grid-cols-3 gap-4">
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Total Applications</p>
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.applications.total }}</p>
+                        </div>
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Completed</p>
+                            <p class="text-2xl font-bold text-green-600">{{ stats.applications.completed }}</p>
+                        </div>
+                        <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">In Progress</p>
+                            <p class="text-2xl font-bold text-yellow-600">{{ stats.applications.inProgress }}</p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead>
+                                <tr>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 bg-gray-50 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr v-for="app in applications" :key="app.id">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ app.name }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ app.description }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span :class="['px-2 inline-flex text-xs leading-5 font-semibold rounded-full', getStatusClass(app.status)]">
+                                            {{ app.status }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                        <button @click="editApplication(app)" class="text-blue-600 hover:text-blue-900 dark:hover:text-blue-400">Edit</button>
+                                        <button @click="deleteApplication(app.id)" class="text-red-600 hover:text-red-900 dark:hover:text-red-400">Delete</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Server Modal -->
+            <div v-if="showEditServerModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-[500px]">
+                    <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Edit Server</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                            <input v-model="editingServer.name" type="text" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Hostname</label>
+                            <input v-model="editingServer.hostname" type="text" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Port</label>
+                            <input v-model="editingServer.port" type="number" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
+                            <input v-model="editingServer.type" type="text" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Owner Name</label>
+                            <input v-model="editingServer.owner_name" type="text" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button @click="showEditServerModal = false" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button @click="saveServerEdit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Application Modal -->
+            <div v-if="showEditAppModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-[500px]">
+                    <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Edit Application</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                            <input v-model="editingApp.name" type="text" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+                            <textarea v-model="editingApp.description" class="mt-1 block w-full rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button @click="showEditAppModal = false" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button @click="saveApplicationEdit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `,
     mounted() {
         this.fetchServers();
         this.fetchApplications();
