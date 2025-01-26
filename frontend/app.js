@@ -311,7 +311,7 @@ createApp({
             this.successMessage = message
             setTimeout(() => this.successMessage = '', 5000)
         },
-        async editServer(server) {
+        async updateServer() {
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/${this.editingServer.id}`, {
                     method: 'PUT',
