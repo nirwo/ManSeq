@@ -253,7 +253,7 @@
                                     <option v-for="(typeInfo, type) in serverTypes" 
                                             :key="type" 
                                             :value="type">
-                                        {{ typeInfo.description }}
+                                        {{ typeInfo.name }}
                                     </option>
                                 </select>
                             </div>
@@ -297,7 +297,7 @@
                                 <option v-for="(typeInfo, type) in serverTypes" 
                                         :key="type" 
                                         :value="type">
-                                    {{ typeInfo.description }}
+                                    {{ typeInfo.name }}
                                 </option>
                             </select>
                         </div>
@@ -354,7 +354,7 @@
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
                             <select v-model="editingServer.type" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
                                 <option v-for="(typeInfo, type) in serverTypes" :key="type" :value="type">
-                                    {{ typeInfo.description }}
+                                    {{ typeInfo.name }}
                                 </option>
                             </select>
                         </div>

@@ -44,37 +44,42 @@ def init_db():
         CREATE TABLE IF NOT EXISTS servers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            description TEXT,
-            type TEXT NOT NULL CHECK(type IN ('WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM')),
-            status TEXT DEFAULT 'Unknown',
-            shutdown_status TEXT DEFAULT 'Not Started',
-            test_response TEXT,
+            hostname TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            type TEXT NOT NULL,
             owner_name TEXT,
-            owner_contact TEXT,
-            hostname TEXT,
-            port INTEGER,
             application_id INTEGER,
+            status TEXT DEFAULT 'offline',
+            test_response TEXT,
             FOREIGN KEY (application_id) REFERENCES applications (id)
         )
         ''')
-
+        
         # Create applications table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             description TEXT,
-            status TEXT DEFAULT 'Unknown',
+            status TEXT DEFAULT 'offline',
             test_response TEXT
         )
         ''')
-
-        # Add test_response column if it doesn't exist
-        cursor.execute("PRAGMA table_info(servers)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'test_response' not in columns:
-            cursor.execute('ALTER TABLE servers ADD COLUMN test_response TEXT')
         
+        # Add status column if it doesn't exist in servers table
+        cursor.execute("PRAGMA table_info(servers)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'status' not in columns:
+            cursor.execute('ALTER TABLE servers ADD COLUMN status TEXT DEFAULT "offline"')
+            cursor.execute('ALTER TABLE servers ADD COLUMN test_response TEXT')
+            
+        # Add status column if it doesn't exist in applications table
+        cursor.execute("PRAGMA table_info(applications)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'status' not in columns:
+            cursor.execute('ALTER TABLE applications ADD COLUMN status TEXT DEFAULT "offline"')
+            cursor.execute('ALTER TABLE applications ADD COLUMN test_response TEXT')
+            
         conn.commit()
 
 init_db()

@@ -25,25 +25,24 @@ createApp({
             editingApp: null,
             searchQuery: '',
             serverTypes: {
-                'WEB': { defaultPort: 80, description: 'Web Server (HTTP)' },
-                'HTTPS': { defaultPort: 443, description: 'Secure Web Server (HTTPS)' },
-                'DB_MYSQL': { defaultPort: 3306, description: 'MySQL Database' },
-                'DB_POSTGRES': { defaultPort: 5432, description: 'PostgreSQL Database' },
-                'DB_MONGO': { defaultPort: 27017, description: 'MongoDB Database' },
-                'DB_REDIS': { defaultPort: 6379, description: 'Redis Cache' },
-                'APP_TOMCAT': { defaultPort: 8080, description: 'Tomcat Application Server' },
-                'APP_NODEJS': { defaultPort: 3000, description: 'Node.js Application' },
-                'APP_PYTHON': { defaultPort: 8000, description: 'Python Application' },
-                'MAIL': { defaultPort: 25, description: 'Mail Server (SMTP)' },
-                'FTP': { defaultPort: 21, description: 'FTP Server' },
-                'SSH': { defaultPort: 22, description: 'SSH Server' },
-                'DNS': { defaultPort: 53, description: 'DNS Server' },
-                'MONITORING': { defaultPort: 9090, description: 'Monitoring Service' },
-                'CUSTOM': { defaultPort: null, description: 'Custom Service' }
+                'http': { name: 'HTTP', defaultPort: 80 },
+                'https': { name: 'HTTPS', defaultPort: 443 },
+                'mysql': { name: 'MySQL', defaultPort: 3306 },
+                'postgresql': { name: 'PostgreSQL', defaultPort: 5432 },
+                'mongodb': { name: 'MongoDB', defaultPort: 27017 },
+                'redis': { name: 'Redis', defaultPort: 6379 },
+                'tomcat': { name: 'Tomcat', defaultPort: 8080 },
+                'nodejs': { name: 'Node.js', defaultPort: 3000 },
+                'python': { name: 'Python', defaultPort: 8000 },
+                'mail': { name: 'Mail', defaultPort: 25 },
+                'ftp': { name: 'FTP', defaultPort: 21 },
+                'ssh': { name: 'SSH', defaultPort: 22 },
+                'dns': { name: 'DNS', defaultPort: 53 },
+                'tcp': { name: 'TCP', defaultPort: 1234 }
             },
             newServer: {
                 name: '',
-                type: 'WEB',
+                type: 'http',
                 status: 'Pending',
                 owner_name: '',
                 owner_contact: '',
@@ -54,7 +53,7 @@ createApp({
             editServer: {
                 id: null,
                 name: '',
-                type: 'WEB',
+                type: 'http',
                 owner_name: '',
                 owner_contact: '',
                 hostname: '',
@@ -81,9 +80,17 @@ createApp({
                 issues,
                 pending
             }
+        },
+        defaultPort() {
+            return this.serverTypes[this.newServer.type]?.defaultPort || '';
         }
     },
     watch: {
+        'newServer.type'(newType) {
+            if (!this.newServer.port || this.newServer.port === '') {
+                this.newServer.port = this.serverTypes[newType]?.defaultPort || '';
+            }
+        },
         darkMode(newVal) {
             localStorage.setItem('darkMode', newVal);
         }
@@ -233,7 +240,7 @@ createApp({
             }
         },
         getDefaultPort(type) {
-            const typeConfig = this.serverTypes[type] || this.serverTypes['CUSTOM']
+            const typeConfig = this.serverTypes[type] || this.serverTypes['http']
             return typeConfig.defaultPort || null
         },
         updateServerPort() {
