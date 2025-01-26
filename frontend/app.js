@@ -2,7 +2,7 @@ const API_BASE_URL = 'http://localhost:8000';
 
 const { createApp } = Vue
 
-createApp({
+const app = createApp({
     data() {
         return {
             darkMode: localStorage.getItem('darkMode') === 'true',
@@ -83,16 +83,34 @@ createApp({
         },
         defaultPort() {
             return this.serverTypes[this.newServer.type]?.defaultPort || '';
+        },
+        filteredServers() {
+            if (!this.searchQuery) return this.servers;
+            const query = this.searchQuery.toLowerCase();
+            return this.servers.filter(server => {
+                return server.name.toLowerCase().includes(query) ||
+                       server.hostname.toLowerCase().includes(query) ||
+                       server.owner_name?.toLowerCase().includes(query) ||
+                       this.serverTypes[server.type]?.name.toLowerCase().includes(query);
+            });
         }
     },
     watch: {
+        darkMode: {
+            handler(newVal) {
+                localStorage.setItem('darkMode', newVal);
+                if (newVal) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            },
+            immediate: true
+        },
         'newServer.type'(newType) {
             if (!this.newServer.port || this.newServer.port === '') {
                 this.newServer.port = this.serverTypes[newType]?.defaultPort || '';
             }
-        },
-        darkMode(newVal) {
-            localStorage.setItem('darkMode', newVal);
         }
     },
     created() {
@@ -103,18 +121,42 @@ createApp({
         }
     },
     methods: {
+        showMessage(message, isError = false) {
+            if (isError) {
+                this.errorMessage = message;
+                setTimeout(() => this.errorMessage = '', 3000);
+            } else {
+                this.successMessage = message;
+                setTimeout(() => this.successMessage = '', 3000);
+            }
+        },
         async loadData() {
             try {
+                const headers = {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                };
+
                 const [serversRes, appsRes] = await Promise.all([
-                    fetch(`${API_BASE_URL}/servers`),
-                    fetch(`${API_BASE_URL}/applications`)
+                    fetch(`${API_BASE_URL}/servers`, { headers }),
+                    fetch(`${API_BASE_URL}/applications`, { headers })
                 ]);
                 
-                this.servers = await serversRes.json();
-                this.applications = await appsRes.json();
+                if (!serversRes.ok || !appsRes.ok) {
+                    throw new Error('Server returned an error response');
+                }
+                
+                const [servers, applications] = await Promise.all([
+                    serversRes.json(),
+                    appsRes.json()
+                ]);
+                
+                this.servers = servers;
+                this.applications = applications;
+                this.errorMessage = '';
             } catch (error) {
                 console.error('Error fetching data:', error);
-                this.errorMessage = 'Failed to load data';
+                this.showMessage('Failed to connect to server', true);
             }
         },
         toggleServerSelection(serverId) {
@@ -146,6 +188,7 @@ createApp({
                 const response = await fetch(`${API_BASE_URL}/servers/bulk-update`, {
                     method: 'PUT',
                     headers: {
+                        'Accept': 'application/json',
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -234,30 +277,40 @@ createApp({
         },
         async fetchServers() {
             try {
-                const response = await fetch(`${API_BASE_URL}/servers`)
+                const headers = {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                };
+
+                const response = await fetch(`${API_BASE_URL}/servers`, { headers });
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`)
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                const data = await response.json()
-                this.servers = data
-                this.filterItems()
+                const data = await response.json();
+                this.servers = data;
+                this.filterItems();
             } catch (error) {
-                console.error('Error fetching servers:', error)
-                this.showError('Failed to load servers: ' + error.message)
+                console.error('Error fetching servers:', error);
+                this.showError('Failed to load servers: ' + error.message);
             }
         },
         async fetchApplications() {
             try {
-                const response = await fetch(`${API_BASE_URL}/applications`)
+                const headers = {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                };
+
+                const response = await fetch(`${API_BASE_URL}/applications`, { headers });
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`)
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                const data = await response.json()
-                this.applications = data
-                this.filterItems()
+                const data = await response.json();
+                this.applications = data;
+                this.filterItems();
             } catch (error) {
-                console.error('Error fetching applications:', error)
-                this.showError('Failed to load applications: ' + error.message)
+                console.error('Error fetching applications:', error);
+                this.showError('Failed to load applications: ' + error.message);
             }
         },
         getDefaultPort(type) {
@@ -275,6 +328,7 @@ createApp({
                 const response = await fetch(`${API_BASE_URL}/servers/${server.id}`, {
                     method: 'PUT',
                     headers: {
+                        'Accept': 'application/json',
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -298,6 +352,7 @@ createApp({
                 const response = await fetch(`${API_BASE_URL}/servers/${serverId}`, {
                     method: 'DELETE',
                     headers: {
+                        'Accept': 'application/json',
                         'Content-Type': 'application/json'
                     }
                 })
@@ -320,7 +375,10 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
                     method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json' 
+                    }
                 });
 
                 const data = await response.json();
@@ -355,7 +413,10 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/${this.editingServer.id}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json' 
+                    },
                     body: JSON.stringify(this.editingServer)
                 });
 
@@ -380,6 +441,7 @@ createApp({
                 const response = await fetch(`${API_BASE_URL}/applications/${this.editingApp.id}`, {
                     method: 'PUT',
                     headers: {
+                        'Accept': 'application/json',
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -405,25 +467,31 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/${server.id}/test`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
                 });
-
-                if (!response.ok) throw new Error('Failed to test server');
-                const result = await response.json();
                 
-                // Update local state
-                server.status = result.status;
-                server.test_response = result.message;
-                this.showSuccess('Server test completed');
+                if (!response.ok) throw new Error('Server test failed');
+                
+                const result = await response.json();
+                await this.fetchData();
+                this.successMessage = `Server ${server.name} tested`;
+                setTimeout(() => this.successMessage = '', 3000);
             } catch (error) {
-                this.showError('Error testing server: ' + error.message);
+                this.errorMessage = `Failed to test server: ${error.message}`;
+                setTimeout(() => this.errorMessage = '', 3000);
             }
         },
         async testAllServers() {
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/test-all`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
                 });
 
                 if (!response.ok) throw new Error('Failed to test servers');
@@ -446,7 +514,10 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/applications/${app.id}/test`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
                 });
 
                 if (!response.ok) throw new Error('Failed to test application');
@@ -476,7 +547,10 @@ createApp({
             try {
                 const response = await fetch(`${API_BASE_URL}/applications/test-all`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
                 });
 
                 if (!response.ok) throw new Error('Failed to test applications');
@@ -494,6 +568,124 @@ createApp({
                 this.showSuccess('All applications tested successfully');
             } catch (error) {
                 this.showError('Error testing applications: ' + error.message);
+            }
+        },
+        async editServer(server) {
+            this.editingServer = { ...server };
+            this.showEditServerModal = true;
+        },
+        async saveServer() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${this.editingServer.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(this.editingServer)
+                });
+
+                if (!response.ok) throw new Error('Failed to update server');
+                
+                await this.fetchData();
+                this.showEditServerModal = false;
+                this.showMessage('Server updated successfully');
+            } catch (error) {
+                this.showMessage('Failed to update server: ' + error.message, true);
+            }
+        },
+        async deleteServer(id) {
+            if (!confirm('Are you sure you want to delete this server?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete server');
+                
+                await this.fetchData();
+                this.showMessage('Server deleted successfully');
+            } catch (error) {
+                this.showMessage('Failed to delete server: ' + error.message, true);
+            }
+        },
+        async deleteApplication(id) {
+            if (!confirm('Are you sure you want to delete this application?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete application');
+                
+                await this.fetchData();
+                this.showMessage('Application deleted successfully');
+            } catch (error) {
+                this.showMessage('Failed to delete application: ' + error.message, true);
+            }
+        },
+        async testServer(server) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${server.id}/test`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Server test failed');
+                
+                await this.fetchData();
+                this.showMessage(`Server ${server.name} tested successfully`);
+            } catch (error) {
+                this.showMessage('Failed to test server: ' + error.message, true);
+            }
+        },
+        async testAllServers() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/test-all`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Failed to test servers');
+                
+                await this.fetchData();
+                this.showMessage('All servers tested successfully');
+            } catch (error) {
+                this.showMessage('Failed to test servers: ' + error.message, true);
+            }
+        },
+        async testApplication(app) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${app.id}/test`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Application test failed');
+                
+                await this.fetchData();
+                this.showMessage(`Application ${app.name} tested successfully`);
+            } catch (error) {
+                this.showMessage('Failed to test application: ' + error.message, true);
+            }
+        },
+        async testAllApplications() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/test-all`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Failed to test applications');
+                
+                await this.fetchData();
+                this.showMessage('All applications tested successfully');
+            } catch (error) {
+                this.showMessage('Failed to test applications: ' + error.message, true);
             }
         },
     },

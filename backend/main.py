@@ -20,7 +20,7 @@ app = FastAPI()
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins in development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -648,10 +648,14 @@ async def test_all_applications():
 
 if __name__ == "__main__":
     import uvicorn
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=3000, help="Port to bind to")
-    args = parser.parse_args()
+    from pathlib import Path
+    import os
     
-    uvicorn.run("main:app", host=args.host, port=args.port, reload=True)
+    # Get the directory containing this file
+    current_dir = Path(__file__).parent.absolute()
+    
+    # Change to the directory containing main.py
+    os.chdir(current_dir)
+    
+    # Run the server
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
