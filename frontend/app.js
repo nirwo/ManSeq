@@ -1,10 +1,4 @@
-import { Vue } from 'vue';
-import { ImportModals } from './components/import-modals.js';
-import { ActionButtons } from './components/action-buttons.js';
-
 const API_BASE_URL = `http://${window.location.hostname}:3000`;
-
-const { createApp } = Vue;
 
 const ImportModals = {
     template: `
@@ -127,7 +121,7 @@ const ActionButtons = {
     emits: ['view-change', 'show-import-server', 'show-import-app']
 };
 
-export const app = createApp({
+const app = Vue.createApp({
     components: {
         'import-modals': ImportModals,
         'action-buttons': ActionButtons
