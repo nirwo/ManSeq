@@ -646,16 +646,65 @@ async def test_all_applications():
     finally:
         db.close()
 
+@app.post("/servers/import")
+async def import_servers(request: Request):
+    try:
+        data = await request.json()
+        servers = data.get("servers", [])
+        
+        # Validate and insert servers
+        for server in servers:
+            if not all(k in server for k in ["name", "hostname", "port", "type", "owner_name"]):
+                raise HTTPException(status_code=400, detail="Invalid server data format")
+        
+        # Insert servers into database
+        with get_db() as db:
+            for server in servers:
+                db.execute(
+                    "INSERT INTO servers (name, hostname, port, type, owner_name) VALUES (?, ?, ?, ?, ?)",
+                    (server["name"], server["hostname"], server["port"], server["type"], server["owner_name"])
+                )
+            db.commit()
+        
+        return {"message": "Servers imported successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/applications/import")
+async def import_applications(request: Request):
+    try:
+        data = await request.json()
+        applications = data.get("applications", [])
+        
+        # Validate and insert applications
+        for app in applications:
+            if not all(k in app for k in ["name", "description"]):
+                raise HTTPException(status_code=400, detail="Invalid application data format")
+        
+        # Insert applications into database
+        with get_db() as db:
+            for app in applications:
+                db.execute(
+                    "INSERT INTO applications (name, description) VALUES (?, ?)",
+                    (app["name"], app["description"])
+                )
+            db.commit()
+        
+        return {"message": "Applications imported successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     from pathlib import Path
     import os
     
-    # Get the directory containing this file
-    current_dir = Path(__file__).parent.absolute()
+    # Get the directory containing the script
+    script_dir = Path(__file__).parent.absolute()
+    os.chdir(script_dir)
     
-    # Change to the directory containing main.py
-    os.chdir(current_dir)
+    # Initialize database
+    init_db()
     
     # Run the server
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)

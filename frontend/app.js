@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:3000';
 
 const { createApp } = Vue
 
@@ -15,6 +15,8 @@ const app = createApp({
             showEditServerModal: false,
             showEditAppModal: false,
             showBulkModal: false,
+            showImportServerModal: false,
+            showImportAppModal: false,
             selectedServers: [],
             bulkAction: {
                 type: null,
@@ -60,6 +62,7 @@ const app = createApp({
                 port: 80,
                 application_id: null
             },
+            importData: '',
             errorMessage: '',
             successMessage: '',
             sampleCsvUrl: 'template.csv'
@@ -686,6 +689,60 @@ const app = createApp({
                 this.showMessage('All applications tested successfully');
             } catch (error) {
                 this.showMessage('Failed to test applications: ' + error.message, true);
+            }
+        },
+        async importServers() {
+            try {
+                const lines = this.importData.trim().split('\n');
+                const servers = lines.map(line => {
+                    const [name, hostname, port, type, owner_name] = line.split(',').map(s => s.trim());
+                    return { name, hostname, port: parseInt(port), type, owner_name };
+                });
+
+                const response = await fetch(`${API_BASE_URL}/servers/import`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ servers })
+                });
+
+                if (!response.ok) throw new Error('Failed to import servers');
+                
+                await this.fetchData();
+                this.showImportServerModal = false;
+                this.importData = '';
+                this.showMessage('Servers imported successfully');
+            } catch (error) {
+                this.showMessage('Failed to import servers: ' + error.message, true);
+            }
+        },
+        async importApplications() {
+            try {
+                const lines = this.importData.trim().split('\n');
+                const applications = lines.map(line => {
+                    const [name, description] = line.split(',').map(s => s.trim());
+                    return { name, description };
+                });
+
+                const response = await fetch(`${API_BASE_URL}/applications/import`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ applications })
+                });
+
+                if (!response.ok) throw new Error('Failed to import applications');
+                
+                await this.fetchData();
+                this.showImportAppModal = false;
+                this.importData = '';
+                this.showMessage('Applications imported successfully');
+            } catch (error) {
+                this.showMessage('Failed to import applications: ' + error.message, true);
             }
         },
     },
