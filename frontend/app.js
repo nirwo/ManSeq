@@ -11,6 +11,8 @@ createApp({
             filteredApplications: [],
             activeView: 'servers',
             showNewServerModal: false,
+            showEditServerModal: false,
+            showEditAppModal: false,
             showBulkModal: false,
             selectedServers: [],
             bulkAction: {
@@ -18,6 +20,8 @@ createApp({
                 shutdown_status: null,
                 application_id: null
             },
+            editingServer: null,
+            editingApp: null,
             searchQuery: '',
             serverTypes: {
                 'WEB': { defaultPort: 80, description: 'Web Server (HTTP)' },
@@ -40,6 +44,16 @@ createApp({
                 name: '',
                 type: 'WEB',
                 status: 'Pending',
+                owner_name: '',
+                owner_contact: '',
+                hostname: '',
+                port: 80,
+                application_id: null
+            },
+            editServer: {
+                id: null,
+                name: '',
+                type: 'WEB',
                 owner_name: '',
                 owner_contact: '',
                 hostname: '',
@@ -296,7 +310,57 @@ createApp({
         showSuccess(message) {
             this.successMessage = message
             setTimeout(() => this.successMessage = '', 5000)
-        }
+        },
+        async editServer(server) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${this.editingServer.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.editingServer)
+                });
+
+                if (!response.ok) throw new Error('Failed to update server');
+                await this.fetchServers();
+                this.showEditServerModal = false;
+                this.editingServer = null;
+            } catch (error) {
+                this.showError(error.message);
+            }
+        },
+        openEditModal(server) {
+            this.editingServer = { ...server };
+            this.showEditServerModal = true;
+        },
+        async editApplication(app) {
+            this.editingApp = { ...app };
+            this.showEditAppModal = true;
+        },
+        async saveApplication() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${this.editingApp.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: this.editingApp.name,
+                        description: this.editingApp.description
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to update application');
+                }
+
+                await this.fetchApplications();
+                this.showSuccess('Application updated successfully');
+                this.showEditAppModal = false;
+                this.editingApp = null;
+            } catch (error) {
+                this.showError('Error updating application: ' + error.message);
+            }
+        },
     },
     async mounted() {
         await this.fetchApplications()

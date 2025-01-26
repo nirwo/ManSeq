@@ -127,6 +127,47 @@ async def update_all_statuses():
 async def startup_event():
     asyncio.create_task(update_all_statuses())
 
+class ServerValidation(BaseModel):
+    hostname: str
+    port: int
+    type: str
+
+async def validate_server(hostname: str, port: int, server_type: str) -> dict:
+    try:
+        if port == 80 or port == 443:
+            # For default ports, use basic connection check
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(hostname, port),
+                timeout=2.0
+            )
+            writer.close()
+            await writer.wait_closed()
+            return {"status": "OK", "message": "Connection successful"}
+        else:
+            # For other ports, attempt service-specific validation
+            if server_type in ['APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'WEB']:
+                try:
+                    response = requests.get(f"http://{hostname}:{port}", timeout=2)
+                    return {"status": "OK", "message": f"HTTP response: {response.status_code}"}
+                except:
+                    return {"status": "Error", "message": "Failed to connect to web service"}
+            else:
+                # Basic port check for other services
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(hostname, port),
+                    timeout=2.0
+                )
+                writer.close()
+                await writer.wait_closed()
+                return {"status": "OK", "message": "Port is open"}
+    except Exception as e:
+        return {"status": "Error", "message": str(e)}
+
+@app.post("/validate-server")
+async def validate_server_endpoint(server: ServerValidation):
+    result = await validate_server(server.hostname, server.port, server.type)
+    return result
+
 # Application endpoints
 @app.get("/applications")
 async def get_applications():
@@ -146,6 +187,31 @@ async def create_application(app_data: dict):
                       (app_data["name"], app_data["description"]))
         app_id = cursor.lastrowid
         return {"id": app_id, **app_data}
+    finally:
+        if conn:
+            conn.close()
+
+@app.put("/applications/{app_id}")
+async def update_application(app_id: int, app_data: dict):
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE applications 
+            SET name = ?, description = ?
+            WHERE id = ?
+        ''', (app_data["name"], app_data["description"], app_id))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        conn.commit()
+        return {"status": "success"}
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
             conn.close()
@@ -270,71 +336,63 @@ async def delete_server(server_id: int):
 @app.post("/servers/import-csv")
 async def import_csv(file: UploadFile = File(...)):
     content = await file.read()
-    csv_data = content.decode()
-    reader = csv.DictReader(io.StringIO(csv_data))
+    csv_data = csv.DictReader(io.StringIO(content.decode()))
     
-    # Define valid server types
-    VALID_TYPES = {'WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM'}
+    response = {"success": [], "errors": []}
+    applications = {}
     
-    conn = None
-    try:
-        conn = get_db()
+    with get_db() as conn:
         cursor = conn.cursor()
-        for row in reader:
+        
+        for row in csv_data:
             try:
-                # Create/get application using the name field
-                app_name = row['name']
-                cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
-                result = cursor.fetchone()
-                if result:
-                    app_id = result[0]
-                else:
-                    # Create new application
-                    cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
-                                 (app_name, f"Application managed by {row.get('team', 'Unknown Team')}"))
-                    app_id = cursor.lastrowid
+                # Get or create application based on name
+                app_name = row.get('name', '').split('_')[0]  # Get application name from server name prefix
+                if app_name not in applications:
+                    # Check if application exists
+                    cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
+                    app_result = cursor.fetchone()
+                    
+                    if app_result:
+                        applications[app_name] = app_result[0]
+                    else:
+                        # Create new application
+                        cursor.execute(
+                            'INSERT INTO applications (name, description) VALUES (?, ?)',
+                            (app_name, f"Application for {app_name} services")
+                        )
+                        applications[app_name] = cursor.lastrowid
                 
-                # Handle port conversion safely
-                port = row.get('port', '')
-                try:
-                    port = int(port) if port else 80
-                except (ValueError, TypeError):
-                    port = 80
+                # Insert server with application reference
+                port = int(row.get('port', 80))
+                server_data = {
+                    'name': row['name'],
+                    'type': row.get('type', 'CUSTOM'),
+                    'owner_name': row.get('team', 'Unknown'),
+                    'hostname': row.get('host', ''),
+                    'port': port,
+                    'application_id': applications[app_name]
+                }
                 
-                # Handle server type
-                server_type = row.get('type', '').upper()
-                if not server_type or server_type not in VALID_TYPES:
-                    server_type = 'WEB'  # Default to WEB if type is missing or invalid
+                cursor.execute('''
+                    INSERT INTO servers (name, type, owner_name, hostname, port, application_id)
+                    VALUES (:name, :type, :owner_name, :hostname, :port, :application_id)
+                ''', server_data)
                 
-                # Create server entry with component name based on type
-                server_name = f"{app_name} {server_type.capitalize()}"
-                        
-                cursor.execute(
-                    '''INSERT INTO servers 
-                       (name, type, status, shutdown_status, owner_name, owner_contact, hostname, port, application_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (server_name,  # Use type-specific name for the server
-                     server_type,  
-                     'Pending', 
-                     'Not Started',
-                     row.get('team', ''),  # Team as owner
-                     '',  
-                     row.get('host', ''), 
-                     port,
-                     app_id)
-                )
+                response["success"].append({
+                    "name": row['name'],
+                    "message": "Server created successfully"
+                })
+                
             except Exception as e:
-                conn.rollback()
-                raise HTTPException(status_code=400, detail=f"Error importing row {row.get('name', 'unknown')}: {str(e)}")
+                response["errors"].append({
+                    "name": row.get('name', 'Unknown'),
+                    "error": str(e)
+                })
+        
         conn.commit()
-        return {"message": "Import successful"}
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        if conn:
-            conn.close()
+    
+    return response
 
 @app.put("/servers/bulk-update")
 async def bulk_update_servers(request: Request):
