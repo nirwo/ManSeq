@@ -12,6 +12,8 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 from datetime import datetime
 import aiosqlite
+import socket
+import aiohttp
 
 app = FastAPI()
 
@@ -77,33 +79,40 @@ def init_db():
 
 init_db()
 
-async def check_server_status(hostname: str, port: int = 80, server_type: str = 'WEB'):
+async def check_server_status(hostname: str, port: int, server_type: str) -> dict:
     try:
-        if port == 80 or port == 443:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(hostname, port),
-                timeout=2.0
-            )
-            writer.close()
-            await writer.wait_closed()
-            return {"status": "Online", "message": "Connection successful"}
+        if not hostname or not port:
+            return {"status": "offline", "message": "Invalid hostname or port"}
+
+        # Try to resolve the hostname first
+        try:
+            socket.gethostbyname(hostname)
+        except socket.gaierror:
+            return {"status": "offline", "message": f"Could not resolve hostname: {hostname}"}
+
+        if server_type.lower() == "http":
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"http://{hostname}:{port}", timeout=5) as response:
+                        return {"status": "online", "message": f"HTTP server responded with status {response.status}"}
+            except Exception as e:
+                return {"status": "offline", "message": f"HTTP connection failed: {str(e)}"}
         else:
-            if server_type in ['APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'WEB']:
-                try:
-                    response = requests.get(f"http://{hostname}:{port}", timeout=2)
-                    return {"status": "Online", "message": f"HTTP response: {response.status_code}"}
-                except:
-                    return {"status": "Error", "message": "Failed to connect to web service"}
-            else:
+            # Default TCP check
+            try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(hostname, port),
-                    timeout=2.0
+                    timeout=5
                 )
                 writer.close()
                 await writer.wait_closed()
-                return {"status": "Online", "message": "Port is open"}
+                return {"status": "online", "message": f"TCP connection successful on port {port}"}
+            except asyncio.TimeoutError:
+                return {"status": "offline", "message": f"Connection timeout on port {port}"}
+            except Exception as e:
+                return {"status": "offline", "message": f"Connection failed: {str(e)}"}
     except Exception as e:
-        return {"status": "Offline", "message": str(e)}
+        return {"status": "offline", "message": f"Test failed: {str(e)}"}
 
 async def update_all_statuses():
     while True:
@@ -137,15 +146,15 @@ async def update_all_statuses():
                     message = "No servers associated"
                 else:
                     statuses = app[1].split(',')
-                    if all(s == "Online" for s in statuses):
-                        status = "Online"
+                    if all(s == "online" for s in statuses):
+                        status = "online"
                         message = "All servers online"
-                    elif all(s == "Offline" for s in statuses):
-                        status = "Offline"
+                    elif all(s == "offline" for s in statuses):
+                        status = "offline"
                         message = "All servers offline"
                     else:
-                        status = "Partial"
-                        online = sum(1 for s in statuses if s == "Online")
+                        status = "partial"
+                        online = sum(1 for s in statuses if s == "online")
                         total = len(statuses)
                         message = f"{online}/{total} servers online"
                 
@@ -171,44 +180,16 @@ class ServerValidation(BaseModel):
     port: int
     type: str
 
-async def validate_server(hostname: str, port: int, server_type: str) -> dict:
+@app.post("/servers/test")
+async def test_server(server: dict):
     try:
-        if port == 80 or port == 443:
-            # For default ports, use basic connection check
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(hostname, port),
-                timeout=2.0
-            )
-            writer.close()
-            await writer.wait_closed()
-            return {"status": "OK", "message": "Connection successful"}
-        else:
-            # For other ports, attempt service-specific validation
-            if server_type in ['APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'WEB']:
-                try:
-                    response = requests.get(f"http://{hostname}:{port}", timeout=2)
-                    return {"status": "OK", "message": f"HTTP response: {response.status_code}"}
-                except:
-                    return {"status": "Error", "message": "Failed to connect to web service"}
-            else:
-                # Basic port check for other services
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(hostname, port),
-                    timeout=2.0
-                )
-                writer.close()
-                await writer.wait_closed()
-                return {"status": "OK", "message": "Port is open"}
+        result = await check_server_status(server.get("hostname"), server.get("port"), server.get("type", "tcp"))
+        return result
     except Exception as e:
-        return {"status": "Error", "message": str(e)}
-
-@app.post("/validate-server")
-async def validate_server_endpoint(server: ServerValidation):
-    result = await validate_server(server.hostname, server.port, server.type)
-    return result
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/servers/{server_id}/test")
-async def test_server(server_id: int):
+async def test_server_endpoint(server_id: int):
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -578,15 +559,15 @@ async def test_application(app_id: int):
                 continue
         
         # Calculate overall application status
-        if all(r["status"] == "Online" for r in results):
+        if all(r["status"] == "online" for r in results):
             status = "online"
             message = "All servers online"
-        elif all(r["status"] == "Offline" for r in results):
+        elif all(r["status"] == "offline" for r in results):
             status = "offline"
             message = "All servers offline"
         else:
             status = "partial"
-            online = sum(1 for r in results if r["status"] == "Online")
+            online = sum(1 for r in results if r["status"] == "online")
             message = f"{online}/{len(results)} servers online"
         
         cursor.execute(
