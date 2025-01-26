@@ -84,38 +84,53 @@ def init_db():
 
 init_db()
 
+async def ping_host(hostname: str) -> dict:
+    try:
+        # Run ping command with timeout
+        result = subprocess.run(['ping', '-c', '1', '-W', '2', hostname], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            return {"status": "online", "message": "Host is reachable (ping successful)"}
+        return {"status": "offline", "message": "Host is not responding to ping"}
+    except Exception as e:
+        return {"status": "offline", "message": f"Ping failed: {str(e)}"}
+
 async def check_server_status(hostname: str, port: int, server_type: str) -> dict:
     try:
         if not hostname or not port:
             return {"status": "offline", "message": "Invalid hostname or port"}
 
-        # Try to resolve the hostname first
-        try:
-            socket.gethostbyname(hostname)
-        except socket.gaierror:
-            return {"status": "offline", "message": f"Could not resolve hostname: {hostname}"}
-
-        if server_type.lower() == "http":
+        # Always try ping first
+        ping_result = await ping_host(hostname)
+        
+        # If ping succeeds, try service-specific test
+        if ping_result["status"] == "online":
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"http://{hostname}:{port}", timeout=5) as response:
-                        return {"status": "online", "message": f"HTTP server responded with status {response.status}"}
+                if server_type.lower() == "http":
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(f"http://{hostname}:{port}", timeout=5) as response:
+                                return {"status": "online", "message": f"HTTP server responded with status {response.status}"}
+                    except Exception as e:
+                        return {"status": "online", "message": f"Host reachable but HTTP service error: {str(e)}"}
+                else:
+                    # Default TCP check
+                    try:
+                        reader, writer = await asyncio.wait_for(
+                            asyncio.open_connection(hostname, port),
+                            timeout=5
+                        )
+                        writer.close()
+                        await writer.wait_closed()
+                        return {"status": "online", "message": f"TCP connection successful on port {port}"}
+                    except Exception as e:
+                        return {"status": "online", "message": f"Host reachable but service error: {str(e)}"}
             except Exception as e:
-                return {"status": "offline", "message": f"HTTP connection failed: {str(e)}"}
-        else:
-            # Default TCP check
-            try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(hostname, port),
-                    timeout=5
-                )
-                writer.close()
-                await writer.wait_closed()
-                return {"status": "online", "message": f"TCP connection successful on port {port}"}
-            except asyncio.TimeoutError:
-                return {"status": "offline", "message": f"Connection timeout on port {port}"}
-            except Exception as e:
-                return {"status": "offline", "message": f"Connection failed: {str(e)}"}
+                # Even if service test fails, if ping works we mark as online
+                return ping_result
+        
+        return ping_result
+        
     except Exception as e:
         return {"status": "offline", "message": f"Test failed: {str(e)}"}
 
