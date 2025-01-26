@@ -364,6 +364,47 @@ createApp({
                 this.showError('Error updating application: ' + error.message);
             }
         },
+        async testServer(server) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${server.id}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error('Failed to test server');
+                const result = await response.json();
+                
+                // Update local state
+                server.status = result.status;
+                server.test_response = result.message;
+                this.showSuccess('Server test completed');
+            } catch (error) {
+                this.showError('Error testing server: ' + error.message);
+            }
+        },
+        async testAllServers() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/test-all`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error('Failed to test servers');
+                const data = await response.json();
+                
+                // Update local state
+                data.results.forEach(result => {
+                    const server = this.servers.find(s => s.id === result.id);
+                    if (server) {
+                        server.status = result.result.status;
+                        server.test_response = result.result.message;
+                    }
+                });
+                this.showSuccess('All servers tested successfully');
+            } catch (error) {
+                this.showError('Error testing servers: ' + error.message);
+            }
+        },
     },
     async mounted() {
         await this.fetchApplications()

@@ -193,6 +193,7 @@
                                     'text-green-600': server.shutdown_status === 'Completed',
                                     'text-gray-600': server.shutdown_status === 'Not Started'
                                 }">{{ server.shutdown_status }}</span></p>
+                                <p v-if="server.test_response" class="text-sm text-gray-600">Test Response: {{ server.test_response }}</p>
                             </div>
                         </div>
                     </div>
@@ -201,6 +202,17 @@
 
             <!-- Servers View -->
             <div v-if="activeView === 'servers'" class="space-y-4">
+                <div class="mb-4 flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Servers</h2>
+                    <div class="space-x-2">
+                        <button @click="testAllServers" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            Test All Servers
+                        </button>
+                        <button @click="showBulkModal = true" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                            Bulk Update
+                        </button>
+                    </div>
+                </div>
                 <div v-for="server in servers" :key="server.id" 
                      class="bg-white p-4 rounded shadow">
                     <div class="flex items-center justify-between mb-2">
@@ -221,6 +233,9 @@
                                 <option value="In Progress">In Progress</option>
                                 <option value="Completed">Completed</option>
                             </select>
+                            <button @click="testServer(server)" class="text-blue-600 hover:text-blue-800">
+                                Test
+                            </button>
                             <button @click="openEditModal(server)" 
                                     class="text-blue-600 hover:text-blue-800">
                                 Edit
@@ -263,6 +278,7 @@
                             'text-green-600': server.shutdown_status === 'Completed',
                             'text-gray-600': server.shutdown_status === 'Not Started'
                         }">{{ server.shutdown_status }}</span></p>
+                        <p v-if="server.test_response" class="text-sm text-gray-600">Test Response: {{ server.test_response }}</p>
                     </div>
                 </div>
             </div>

@@ -47,6 +47,7 @@ def init_db():
              type TEXT NOT NULL CHECK(type IN ('WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM')),
              status TEXT DEFAULT 'Unknown',
              shutdown_status TEXT DEFAULT 'Not Started',
+             test_response TEXT,
              owner_name TEXT,
              owner_contact TEXT,
              hostname TEXT,
@@ -92,36 +93,52 @@ def init_db():
 
 init_db()
 
-async def check_server_status(hostname: str, port: int = 80):
+async def check_server_status(hostname: str, port: int = 80, server_type: str = 'WEB'):
     try:
-        # Quick timeout for faster response
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(hostname, port),
-            timeout=1.0
-        )
-        writer.close()
-        await writer.wait_closed()
-        return 'Online'
-    except Exception:
-        return 'Offline'
+        if port == 80 or port == 443:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(hostname, port),
+                timeout=2.0
+            )
+            writer.close()
+            await writer.wait_closed()
+            return {"status": "Online", "message": "Connection successful"}
+        else:
+            if server_type in ['APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'WEB']:
+                try:
+                    response = requests.get(f"http://{hostname}:{port}", timeout=2)
+                    return {"status": "Online", "message": f"HTTP response: {response.status_code}"}
+                except:
+                    return {"status": "Error", "message": "Failed to connect to web service"}
+            else:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(hostname, port),
+                    timeout=2.0
+                )
+                writer.close()
+                await writer.wait_closed()
+                return {"status": "Online", "message": "Port is open"}
+    except Exception as e:
+        return {"status": "Offline", "message": str(e)}
 
 async def update_all_statuses():
     while True:
         try:
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT id, hostname, port FROM servers')
-                servers = cursor.fetchall()
+            async with aiosqlite.connect(DB_PATH) as db:
+                db.row_factory = sqlite3.Row
+                cursor = await db.execute('SELECT id, hostname, port, type FROM servers')
+                servers = await cursor.fetchall()
                 
                 for server in servers:
-                    status = await check_server_status(server[1], server[2])
-                    cursor.execute('UPDATE servers SET status = ? WHERE id = ?',
-                                 (status, server[0]))
-                conn.commit()
+                    result = await check_server_status(server['hostname'], server['port'], server['type'])
+                    await db.execute(
+                        'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
+                        (result["status"], result["message"], server['id'])
+                    )
+                await db.commit()
         except Exception as e:
             print(f"Error updating statuses: {e}")
-        finally:
-            await asyncio.sleep(30)  # Check every 30 seconds
+        await asyncio.sleep(30)  # Update every 30 seconds
 
 @app.on_event("startup")
 async def startup_event():
@@ -167,6 +184,53 @@ async def validate_server(hostname: str, port: int, server_type: str) -> dict:
 async def validate_server_endpoint(server: ServerValidation):
     result = await validate_server(server.hostname, server.port, server.type)
     return result
+
+@app.post("/servers/{server_id}/test")
+async def test_server(server_id: int):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT hostname, port, type FROM servers WHERE id = ?', (server_id,))
+        server = cursor.fetchone()
+        
+        if not server:
+            raise HTTPException(status_code=404, detail="Server not found")
+        
+        result = await check_server_status(server[0], server[1], server[2])
+        
+        cursor.execute(
+            'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
+            (result["status"], result["message"], server_id)
+        )
+        conn.commit()
+        
+        return result
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/servers/test-all")
+async def test_all_servers():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, hostname, port, type FROM servers')
+        servers = cursor.fetchall()
+        
+        results = []
+        for server in servers:
+            result = await check_server_status(server[1], server[2], server[3])
+            cursor.execute(
+                'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
+                (result["status"], result["message"], server[0])
+            )
+            results.append({"id": server[0], "result": result})
+        
+        conn.commit()
+        return {"results": results}
+    finally:
+        if conn:
+            conn.close()
 
 # Application endpoints
 @app.get("/applications")
