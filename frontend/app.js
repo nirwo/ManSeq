@@ -95,6 +95,13 @@ createApp({
             localStorage.setItem('darkMode', newVal);
         }
     },
+    created() {
+        this.loadData()
+        // Initialize dark mode
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.documentElement.classList.add('dark')
+        }
+    },
     methods: {
         toggleServerSelection(serverId) {
             const index = this.selectedServers.indexOf(serverId)
