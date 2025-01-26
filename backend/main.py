@@ -222,13 +222,22 @@ async def delete_application(app_id: int):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        # First update any servers using this application
+        
+        # First update any servers that reference this application
         cursor.execute('UPDATE servers SET application_id = NULL WHERE application_id = ?', (app_id,))
+        
         # Then delete the application
         cursor.execute('DELETE FROM applications WHERE id = ?', (app_id,))
+        
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Application not found")
-        return {"status": "success"}
+        
+        conn.commit()
+        return {"status": "success", "message": "Application deleted successfully"}
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
             conn.close()

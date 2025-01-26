@@ -282,16 +282,19 @@ createApp({
         async deleteApplication(id) {
             try {
                 const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
-                    method: 'DELETE'
-                })
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
 
-                if (!response.ok) throw new Error('Failed to delete application')
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Failed to delete application');
 
-                await this.fetchApplications()
-                await this.fetchServers()
-                this.showSuccess('Application deleted successfully')
+                // Remove from local state
+                this.applications = this.applications.filter(a => a.id !== id);
+                this.filterItems();
+                this.showSuccess('Application deleted successfully');
             } catch (error) {
-                this.showError('Error deleting application: ' + error.message)
+                this.showError('Error deleting application: ' + error.message);
             }
         },
         getStatusClass(status) {
