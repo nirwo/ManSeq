@@ -28,9 +28,10 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "servers.db")
 
 # Database connection management
 def get_db():
-    conn = sqlite3.connect(DB_PATH, timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    return conn
+    db = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
+    db.execute('PRAGMA journal_mode=WAL')
+    db.row_factory = sqlite3.Row
+    return db
 
 def init_db():
     with get_db() as conn:
@@ -233,25 +234,49 @@ async def test_server(server_id: int):
 @app.post("/servers/test-all")
 async def test_all_servers():
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, hostname, port, type FROM servers')
+        db = get_db()
+        cursor = db.cursor()
+        
+        cursor.execute("SELECT * FROM servers")
         servers = cursor.fetchall()
         
-        results = []
         for server in servers:
-            result = await check_server_status(server[1], server[2], server[3])
-            cursor.execute(
-                'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
-                (result["status"], result["message"], server[0])
-            )
-            results.append({"id": server[0], "result": result})
+            try:
+                test_response = await check_server_status(server[1], server[2], server[3])
+                cursor.execute(
+                    "UPDATE servers SET status = ?, test_response = ? WHERE id = ?",
+                    (test_response["status"], json.dumps(test_response), server[0])
+                )
+                db.commit()
+            except Exception as e:
+                print(f"Error testing server {server['id']}: {str(e)}")
+                continue
         
-        conn.commit()
-        return {"results": results}
+        cursor.execute("SELECT * FROM applications")
+        applications = cursor.fetchall()
+        
+        for app in applications:
+            try:
+                cursor.execute("SELECT status FROM servers WHERE application_id = ?", (app["id"],))
+                server_statuses = [row[0] for row in cursor.fetchall()]
+                
+                app_status = "online" if server_statuses and all(status == "online" for status in server_statuses) else "offline"
+                
+                cursor.execute(
+                    "UPDATE applications SET status = ? WHERE id = ?",
+                    (app_status, app["id"])
+                )
+                db.commit()
+            except Exception as e:
+                print(f"Error updating application {app['id']}: {str(e)}")
+                continue
+        
+        return {"message": "All servers and applications tested successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if conn:
-            conn.close()
+        db.close()
 
 # Application endpoints
 @app.get("/applications")
@@ -528,8 +553,8 @@ async def bulk_update_servers(request: Request):
 @app.post("/applications/{app_id}/test")
 async def test_application(app_id: int):
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        db = get_db()
+        cursor = db.cursor()
         
         # Get all servers for this application
         cursor.execute('SELECT id, hostname, port, type FROM servers WHERE application_id = ?', (app_id,))
@@ -540,53 +565,85 @@ async def test_application(app_id: int):
         
         results = []
         for server in servers:
-            result = await check_server_status(server[1], server[2], server[3])
-            cursor.execute(
-                'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
-                (result["status"], result["message"], server[0])
-            )
-            results.append(result)
+            try:
+                test_response = await check_server_status(server[1], server[2], server[3])
+                cursor.execute(
+                    'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
+                    (test_response["status"], json.dumps(test_response), server[0])
+                )
+                db.commit()
+                results.append(test_response)
+            except Exception as e:
+                print(f"Error testing server {server['id']}: {str(e)}")
+                continue
         
         # Calculate overall application status
         if all(r["status"] == "Online" for r in results):
-            status = "Online"
+            status = "online"
             message = "All servers online"
         elif all(r["status"] == "Offline" for r in results):
-            status = "Offline"
+            status = "offline"
             message = "All servers offline"
         else:
-            status = "Partial"
+            status = "partial"
             online = sum(1 for r in results if r["status"] == "Online")
             message = f"{online}/{len(results)} servers online"
         
         cursor.execute(
-            'UPDATE applications SET status = ?, test_response = ? WHERE id = ?',
-            (status, message, app_id)
+            'UPDATE applications SET status = ? WHERE id = ?',
+            (status, app_id)
         )
+        db.commit()
         
-        conn.commit()
         return {"status": status, "message": message, "server_results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if conn:
-            conn.close()
+        db.close()
 
 @app.post("/applications/test-all")
 async def test_all_applications():
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM applications')
-        apps = cursor.fetchall()
+        db = get_db()
+        cursor = db.cursor()
         
-        results = []
-        for app in apps:
-            result = await test_application(app[0])
-            results.append({"id": app[0], "result": result})
+        cursor.execute("SELECT * FROM applications")
+        applications = cursor.fetchall()
         
-        return {"results": results}
+        for app in applications:
+            try:
+                cursor.execute("SELECT * FROM servers WHERE application_id = ?", (app["id"],))
+                servers = cursor.fetchall()
+                
+                for server in servers:
+                    test_response = await check_server_status(server[1], server[2], server[3])
+                    cursor.execute(
+                        'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
+                        (test_response["status"], json.dumps(test_response), server[0])
+                    )
+                    db.commit()
+                
+                cursor.execute("SELECT status FROM servers WHERE application_id = ?", (app["id"],))
+                server_statuses = [row[0] for row in cursor.fetchall()]
+                
+                app_status = "online" if server_statuses and all(status == "online" for status in server_statuses) else "offline"
+                
+                cursor.execute(
+                    "UPDATE applications SET status = ? WHERE id = ?",
+                    (app_status, app["id"])
+                )
+                db.commit()
+                
+            except Exception as e:
+                print(f"Error testing application {app['id']}: {str(e)}")
+                continue
+        
+        return {"message": "All applications tested successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if conn:
-            conn.close()
+        db.close()
 
 if __name__ == "__main__":
     import uvicorn
