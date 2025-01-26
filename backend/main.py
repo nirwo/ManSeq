@@ -280,6 +280,54 @@ async def test_all_servers():
     finally:
         db.close()
 
+@app.post("/servers/{server_id}/test")
+async def test_server(server_id: int):
+    try:
+        with get_db() as db:
+            # Get server details
+            cursor = db.cursor()
+            cursor.execute("SELECT hostname, port FROM servers WHERE id = ?", (server_id,))
+            server = cursor.fetchone()
+            
+            if not server:
+                raise HTTPException(status_code=404, detail="Server not found")
+            
+            hostname, port = server
+            
+            # Simulate server test
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)  # 2 second timeout
+            
+            try:
+                result = sock.connect_ex((hostname, port))
+                if result == 0:
+                    status = "completed"
+                    message = "Server is reachable"
+                else:
+                    status = "in_progress"
+                    message = "Server is not reachable"
+            except socket.gaierror:
+                status = "in_progress"
+                message = "Could not resolve hostname"
+            except Exception as e:
+                status = "in_progress"
+                message = str(e)
+            finally:
+                sock.close()
+            
+            # Update server status
+            cursor.execute(
+                "UPDATE servers SET status = ? WHERE id = ?",
+                (status, server_id)
+            )
+            db.commit()
+            
+            return {"message": message, "status": status}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Application endpoints
 @app.get("/applications")
 async def get_applications():
