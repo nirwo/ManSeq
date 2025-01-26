@@ -765,6 +765,28 @@ const app = createApp({
         },
         async handleServerFileUpload(event) {
             const file = event.target.files[0];
+            if (!file) return
+
+            const formData = new FormData()
+            formData.append('file', file)
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/import-csv`, {
+                    method: 'POST',
+                    body: formData
+                })
+
+                if (!response.ok) throw new Error('Failed to import CSV')
+
+                await this.fetchServers()
+                event.target.value = ''
+                this.showSuccess('CSV imported successfully')
+            } catch (error) {
+                this.showError('Error importing CSV: ' + error.message)
+            }
+        },
+        async handleAppFileUpload(event) {
+            const file = event.target.files[0];
             if (file) {
                 try {
                     if (!file.name.endsWith('.csv')) {
@@ -799,42 +821,6 @@ const app = createApp({
             }
         },
 
-        async handleAppFileUpload(event) {
-            const file = event.target.files[0];
-            if (file) {
-                try {
-                    if (!file.name.endsWith('.csv')) {
-                        throw new Error('Please upload a CSV file');
-                    }
-
-                    const content = await file.text();
-                    const lines = content.split('\n');
-                    if (lines.length < 2) {
-                        throw new Error('CSV file is empty');
-                    }
-
-                    const headers = lines[0].trim().split(',');
-                    this.availableColumns = headers;
-                    this.csvData = lines.slice(1);
-                    this.importType = 'application';
-                    this.columnMapping = {};
-                    
-                    // Auto-map columns if names match
-                    headers.forEach(header => {
-                        const normalizedHeader = header.toLowerCase().trim();
-                        if (this.requiredFields.application.some(field => field.name === normalizedHeader)) {
-                            this.columnMapping[normalizedHeader] = header;
-                        }
-                    });
-
-                    this.showColumnMapModal = true;
-                    this.showImportAppModal = false;
-                } catch (error) {
-                    this.showMessage('Error: ' + error.message, true);
-                }
-            }
-        },
-
         async confirmMapping() {
             try {
                 const fields = this.requiredFields[this.importType];
@@ -843,20 +829,26 @@ const app = createApp({
                     throw new Error(`Please map required fields: ${missingRequired.map(f => f.label).join(', ')}`);
                 }
 
-                const formData = new FormData();
-                const mappedData = this.csvData.map(line => {
-                    const values = line.split(',');
-                    const row = {};
-                    fields.forEach(field => {
-                        if (this.columnMapping[field.name]) {
-                            const colIndex = this.availableColumns.indexOf(this.columnMapping[field.name]);
-                            row[field.name] = values[colIndex]?.trim() || '';
-                        }
-                    });
-                    return row;
-                }).filter(row => Object.keys(row).length > 0);
+                const mappedData = this.csvData
+                    .filter(line => line.trim())  // Skip empty lines
+                    .map(line => {
+                        const values = line.split(',').map(v => v.trim());
+                        const row = {};
+                        fields.forEach(field => {
+                            if (this.columnMapping[field.name]) {
+                                const colIndex = this.availableColumns.indexOf(this.columnMapping[field.name]);
+                                if (colIndex !== -1) {
+                                    row[field.name] = values[colIndex] || '';
+                                }
+                            }
+                        });
+                        return row;
+                    })
+                    .filter(row => Object.keys(row).length > 0);
 
-                const blob = new Blob([JSON.stringify({ data: mappedData, mapping: this.columnMapping })], { type: 'application/json' });
+                const formData = new FormData();
+                const jsonData = JSON.stringify({ data: mappedData, mapping: this.columnMapping });
+                const blob = new Blob([jsonData], { type: 'application/json' });
                 formData.append('file', blob, 'data.json');
 
                 const endpoint = this.importType === 'server' ? 'servers' : 'applications';
@@ -867,7 +859,7 @@ const app = createApp({
 
                 const result = await response.json();
                 if (!response.ok) {
-                    throw new Error(result.error || 'Import failed');
+                    throw new Error(result.error || result.detail || 'Import failed');
                 }
 
                 this.showMessage(result.message);

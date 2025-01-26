@@ -709,24 +709,47 @@ async def upload_servers_csv(file: UploadFile = File(...)):
         servers = []
         for i, row in enumerate(data['data'], 1):
             try:
+                # Validate port before creating server object
+                try:
+                    port = int(row.get('port', 0))
+                    if not (0 < port < 65536):
+                        return JSONResponse(
+                            status_code=400,
+                            content={"error": f"Row {i}: Port must be between 1 and 65535"}
+                        )
+                except ValueError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Row {i}: Invalid port number"}
+                    )
+
                 server = {
-                    "name": row['name'],
-                    "hostname": row['hostname'],
-                    "port": int(row['port']),
-                    "type": row['type'],
-                    "owner_name": row.get('owner_name', '')
+                    "name": str(row.get('name', '')).strip(),
+                    "hostname": str(row.get('hostname', '')).strip(),
+                    "port": port,
+                    "type": str(row.get('type', '')).strip(),
+                    "owner_name": str(row.get('owner_name', '')).strip()
                 }
+                
+                # Validate required fields
                 if not all([server['name'], server['hostname'], server['type']]):
                     return JSONResponse(
                         status_code=400,
-                        content={"error": f"Row {i}: Empty required fields"}
+                        content={"error": f"Row {i}: Name, hostname, and type are required"}
                     )
+                
                 servers.append(server)
             except Exception as e:
                 return JSONResponse(
                     status_code=400,
                     content={"error": f"Row {i}: {str(e)}"}
                 )
+        
+        if not servers:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No valid servers found in the data"}
+            )
         
         with get_db() as db:
             for server in servers:
@@ -736,7 +759,12 @@ async def upload_servers_csv(file: UploadFile = File(...)):
                 )
             db.commit()
         
-        return {"message": f"Imported {len(servers)} servers"}
+        return {"message": f"Successfully imported {len(servers)} servers"}
+    except json.JSONDecodeError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid JSON format"}
+        )
     except Exception as e:
         return JSONResponse(
             status_code=500,
