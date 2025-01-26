@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Function to check if Python package is installed
+# Function to check if a Python package is installed
 check_package() {
     python3 -c "import $1" 2>/dev/null
     return $?
@@ -8,31 +8,29 @@ check_package() {
 
 # Function to install requirements
 install_requirements() {
-    echo "Checking and installing Python dependencies..."
-    if ! command -v pip3 &> /dev/null; then
-        echo "pip3 not found. Installing pip3..."
-        sudo apt-get update && sudo apt-get install -y python3-pip
-    fi
-    
-    cd backend
-    if [ -f "requirements.txt" ]; then
-        echo "Installing requirements from requirements.txt..."
-        pip3 install -r requirements.txt
-    else
-        echo "requirements.txt not found!"
-        exit 1
-    fi
-    cd ..
+    echo "Installing required packages..."
+    pip install -r backend/requirements.txt
 }
 
-# Check and install dependencies
-if ! check_package fastapi || ! check_package uvicorn; then
+# Check for required packages
+required_packages=("fastapi" "uvicorn" "python-multipart" "aiofiles" "sqlalchemy" "pydantic")
+missing_packages=false
+
+for package in "${required_packages[@]}"; do
+    if ! check_package "$package"; then
+        echo "Package $package is not installed"
+        missing_packages=true
+    fi
+done
+
+# Install requirements if any package is missing
+if [ "$missing_packages" = true ]; then
     install_requirements
 fi
 
 # Start the backend server
 cd backend
-python3 main.py &
+python3 -m uvicorn main:app --host 0.0.0.0 --port 3000 --reload &
 
 # Wait a bit for backend to start
 sleep 2
@@ -48,5 +46,5 @@ echo "Frontend running on http://0.0.0.0:3001"
 read -p "Press any key to terminate servers..."
 
 # Kill both servers
-pkill -f "python3 main.py"
+pkill -f "uvicorn main:app"
 pkill -f "python3 -m http.server 3001"
