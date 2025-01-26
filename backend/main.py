@@ -304,55 +304,27 @@ async def create_application(app_data: dict):
             conn.close()
 
 @app.put("/applications/{app_id}")
-async def update_application(app_id: int, app_data: dict):
-    conn = None
+async def update_application(app_id: int, app: dict):
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE applications 
-            SET name = ?, description = ?
-            WHERE id = ?
-        ''', (app_data["name"], app_data["description"], app_id))
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Application not found")
-        
-        conn.commit()
-        return {"status": "success"}
-    except sqlite3.Error as e:
-        if conn:
-            conn.rollback()
+        with get_db() as db:
+            db.execute(
+                "UPDATE applications SET name = ?, description = ?, status = ? WHERE id = ?",
+                (app["name"], app["description"], app.get("status", "in_progress"), app_id)
+            )
+            db.commit()
+        return {"message": "Application updated successfully"}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
 
 @app.delete("/applications/{app_id}")
 async def delete_application(app_id: int):
-    conn = None
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # First update any servers that reference this application
-        cursor.execute('UPDATE servers SET application_id = NULL WHERE application_id = ?', (app_id,))
-        
-        # Then delete the application
-        cursor.execute('DELETE FROM applications WHERE id = ?', (app_id,))
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Application not found")
-        
-        conn.commit()
-        return {"status": "success", "message": "Application deleted successfully"}
-    except sqlite3.Error as e:
-        if conn:
-            conn.rollback()
+        with get_db() as db:
+            db.execute("DELETE FROM applications WHERE id = ?", (app_id,))
+            db.commit()
+        return {"message": "Application deleted successfully"}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
 
 @app.get("/servers")
 async def get_servers():
@@ -389,70 +361,28 @@ async def create_server(server_data: dict):
             conn.close()
 
 @app.put("/servers/{server_id}")
-async def update_server(server_id: int, server_data: dict):
-    conn = None
+async def update_server(server_id: int, server: dict):
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Build update query dynamically based on provided fields
-        update_fields = []
-        params = []
-        for field in ['name', 'type', 'status', 'shutdown_status', 'owner_name', 
-                     'owner_contact', 'hostname', 'port', 'application_id']:
-            if field in server_data:
-                update_fields.append(f"{field} = ?")
-                params.append(server_data[field])
-        
-        if not update_fields:
-            raise HTTPException(status_code=400, detail="No fields to update")
-            
-        query = f'''UPDATE servers SET {", ".join(update_fields)} WHERE id = ?'''
-        params.append(server_id)
-        
-        cursor.execute(query, params)
-        conn.commit()
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Server not found")
-            
-        # Return updated server data
-        cursor.execute('SELECT * FROM servers WHERE id = ?', (server_id,))
-        columns = [col[0] for col in cursor.description]
-        server = dict(zip(columns, cursor.fetchone()))
-        return server
-    finally:
-        if conn:
-            conn.close()
+        with get_db() as db:
+            db.execute(
+                "UPDATE servers SET name = ?, hostname = ?, port = ?, type = ?, owner_name = ?, status = ? WHERE id = ?",
+                (server["name"], server["hostname"], server["port"], server["type"], 
+                 server["owner_name"], server.get("status", "in_progress"), server_id)
+            )
+            db.commit()
+        return {"message": "Server updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/servers/{server_id}")
 async def delete_server(server_id: int):
-    conn = None
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # First check if server exists
-        cursor.execute('SELECT id FROM servers WHERE id = ?', (server_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Server not found")
-            
-        # Delete the server
-        cursor.execute('DELETE FROM servers WHERE id = ?', (server_id,))
-        conn.commit()
-        
-        return {"message": "Server deleted successfully", "id": server_id}
-    except sqlite3.Error as e:
-        if conn:
-            conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        with get_db() as db:
+            db.execute("DELETE FROM servers WHERE id = ?", (server_id,))
+            db.commit()
+        return {"message": "Server deleted successfully"}
     except Exception as e:
-        if conn:
-            conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
 
 @app.post("/servers/import-csv")
 async def import_csv(file: UploadFile = File(...)):

@@ -84,6 +84,18 @@ const app = createApp({
                     { name: 'description', label: 'Description', required: false }
                 ]
             },
+            stats: {
+                servers: {
+                    total: 0,
+                    completed: 0,
+                    inProgress: 0
+                },
+                applications: {
+                    total: 0,
+                    completed: 0,
+                    inProgress: 0
+                }
+            },
         }
     },
     computed: {
@@ -310,6 +322,11 @@ const app = createApp({
                 const data = await response.json();
                 this.servers = data;
                 this.filterItems();
+                
+                // Update stats
+                this.stats.servers.total = this.servers.length;
+                this.stats.servers.completed = this.servers.filter(s => s.status === 'completed').length;
+                this.stats.servers.inProgress = this.servers.filter(s => s.status === 'in_progress').length;
             } catch (error) {
                 console.error('Error fetching servers:', error);
                 this.showError('Failed to load servers: ' + error.message);
@@ -329,6 +346,11 @@ const app = createApp({
                 const data = await response.json();
                 this.applications = data;
                 this.filterItems();
+                
+                // Update stats
+                this.stats.applications.total = this.applications.length;
+                this.stats.applications.completed = this.applications.filter(a => a.status === 'completed').length;
+                this.stats.applications.inProgress = this.applications.filter(a => a.status === 'in_progress').length;
             } catch (error) {
                 console.error('Error fetching applications:', error);
                 this.showError('Failed to load applications: ' + error.message);
@@ -371,46 +393,73 @@ const app = createApp({
         async deleteServer(serverId) {
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/${serverId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    }
-                })
-                
-                const data = await response.json()
-                
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Failed to delete server')
-                }
-                
-                // Remove from local state
-                this.servers = this.servers.filter(s => s.id !== serverId)
-                this.filterItems()
-                this.showSuccess('Server deleted successfully')
-            } catch (error) {
-                this.showError('Error deleting server: ' + error.message)
-            }
-        },
-        async deleteApplication(id) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
-                    method: 'DELETE',
-                    headers: { 
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json' 
-                    }
+                    method: 'DELETE'
                 });
 
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.detail || 'Failed to delete application');
+                if (!response.ok) {
+                    throw new Error('Failed to delete server');
+                }
 
-                // Remove from local state
-                this.applications = this.applications.filter(a => a.id !== id);
-                this.filterItems();
-                this.showSuccess('Application deleted successfully');
+                this.showMessage('Server deleted successfully');
+                await this.fetchServers();
             } catch (error) {
-                this.showError('Error deleting application: ' + error.message);
+                this.showMessage('Error: ' + error.message, true);
+            }
+        },
+        async deleteApplication(appId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${appId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to delete application');
+                }
+
+                this.showMessage('Application deleted successfully');
+                await this.fetchApplications();
+            } catch (error) {
+                this.showMessage('Error: ' + error.message, true);
+            }
+        },
+        async updateServer(server) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/servers/${server.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(server)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update server');
+                }
+
+                this.showMessage('Server updated successfully');
+                await this.fetchServers();
+            } catch (error) {
+                this.showMessage('Error: ' + error.message, true);
+            }
+        },
+        async updateApplication(app) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${app.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(app)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update application');
+                }
+
+                this.showMessage('Application updated successfully');
+                await this.fetchApplications();
+            } catch (error) {
+                this.showMessage('Error: ' + error.message, true);
             }
         },
         getStatusClass(status) {
@@ -429,60 +478,6 @@ const app = createApp({
         showSuccess(message) {
             this.successMessage = message
             setTimeout(() => this.successMessage = '', 5000)
-        },
-        async updateServer() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/servers/${this.editingServer.id}`, {
-                    method: 'PUT',
-                    headers: { 
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json' 
-                    },
-                    body: JSON.stringify(this.editingServer)
-                });
-
-                if (!response.ok) throw new Error('Failed to update server');
-                await this.fetchServers();
-                this.showEditServerModal = false;
-                this.editingServer = null;
-            } catch (error) {
-                this.showError(error.message);
-            }
-        },
-        openEditModal(server) {
-            this.editingServer = { ...server };
-            this.showEditServerModal = true;
-        },
-        async editApplication(app) {
-            this.editingApp = { ...app };
-            this.showEditAppModal = true;
-        },
-        async saveApplication() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/applications/${this.editingApp.id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        name: this.editingApp.name,
-                        description: this.editingApp.description
-                    })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Failed to update application');
-                }
-
-                await this.fetchApplications();
-                this.showSuccess('Application updated successfully');
-                this.showEditAppModal = false;
-                this.editingApp = null;
-            } catch (error) {
-                this.showError('Error updating application: ' + error.message);
-            }
         },
         async testServer(server) {
             try {
@@ -600,7 +595,6 @@ const app = createApp({
                 const response = await fetch(`${API_BASE_URL}/servers/${this.editingServer.id}`, {
                     method: 'PUT',
                     headers: {
-                        'Accept': 'application/json',
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(this.editingServer)
@@ -620,8 +614,7 @@ const app = createApp({
             
             try {
                 const response = await fetch(`${API_BASE_URL}/servers/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Accept': 'application/json' }
+                    method: 'DELETE'
                 });
                 
                 if (!response.ok) throw new Error('Failed to delete server');
@@ -637,8 +630,7 @@ const app = createApp({
             
             try {
                 const response = await fetch(`${API_BASE_URL}/applications/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Accept': 'application/json' }
+                    method: 'DELETE'
                 });
                 
                 if (!response.ok) throw new Error('Failed to delete application');
