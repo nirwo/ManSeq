@@ -1,6 +1,6 @@
-const { createApp } = Vue
+const API_BASE_URL = 'http://localhost:8000';
 
-const API_BASE_URL = `http://${window.location.hostname}:3000`
+const { createApp } = Vue
 
 createApp({
     data() {
@@ -103,6 +103,20 @@ createApp({
         }
     },
     methods: {
+        async loadData() {
+            try {
+                const [serversRes, appsRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/servers`),
+                    fetch(`${API_BASE_URL}/applications`)
+                ]);
+                
+                this.servers = await serversRes.json();
+                this.applications = await appsRes.json();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                this.errorMessage = 'Failed to load data';
+            }
+        },
         toggleServerSelection(serverId) {
             const index = this.selectedServers.indexOf(serverId)
             if (index === -1) {
