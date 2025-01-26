@@ -15,14 +15,13 @@ import aiosqlite
 
 app = FastAPI()
 
-# Configure CORS - allow all origins for development
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "servers.db")
