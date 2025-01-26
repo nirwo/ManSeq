@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'http://0.0.0.0:3000';
 
 const { createApp } = Vue
 
@@ -749,10 +749,22 @@ const app = createApp({
             const file = event.target.files[0];
             if (file) {
                 try {
-                    const content = await file.text();
-                    this.importData = content;
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch(`${API_BASE_URL}/servers/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) throw new Error('Failed to upload file');
+                    
+                    const result = await response.json();
+                    this.showMessage(result.message);
+                    await this.fetchData();
+                    this.showImportServerModal = false;
                 } catch (error) {
-                    this.showMessage('Error reading file: ' + error.message, true);
+                    this.showMessage('Error uploading file: ' + error.message, true);
                 }
             }
         },
@@ -761,10 +773,22 @@ const app = createApp({
             const file = event.target.files[0];
             if (file) {
                 try {
-                    const content = await file.text();
-                    this.importData = content;
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch(`${API_BASE_URL}/applications/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) throw new Error('Failed to upload file');
+                    
+                    const result = await response.json();
+                    this.showMessage(result.message);
+                    await this.fetchData();
+                    this.showImportAppModal = false;
                 } catch (error) {
-                    this.showMessage('Error reading file: ' + error.message, true);
+                    this.showMessage('Error uploading file: ' + error.message, true);
                 }
             }
         },

@@ -694,6 +694,65 @@ async def import_applications(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/servers/upload")
+async def upload_servers_csv(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        csv_content = content.decode()
+        lines = csv_content.strip().split('\n')[1:]  # Skip header
+        
+        servers = []
+        for line in lines:
+            name, hostname, port, type, owner_name = line.strip().split(',')
+            servers.append({
+                "name": name,
+                "hostname": hostname,
+                "port": int(port),
+                "type": type,
+                "owner_name": owner_name
+            })
+        
+        # Insert servers into database
+        with get_db() as db:
+            for server in servers:
+                db.execute(
+                    "INSERT INTO servers (name, hostname, port, type, owner_name) VALUES (?, ?, ?, ?, ?)",
+                    (server["name"], server["hostname"], server["port"], server["type"], server["owner_name"])
+                )
+            db.commit()
+        
+        return {"message": f"Successfully imported {len(servers)} servers"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/applications/upload")
+async def upload_applications_csv(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        csv_content = content.decode()
+        lines = csv_content.strip().split('\n')[1:]  # Skip header
+        
+        applications = []
+        for line in lines:
+            name, description = line.strip().split(',')
+            applications.append({
+                "name": name,
+                "description": description
+            })
+        
+        # Insert applications into database
+        with get_db() as db:
+            for app in applications:
+                db.execute(
+                    "INSERT INTO applications (name, description) VALUES (?, ?)",
+                    (app["name"], app["description"])
+                )
+            db.commit()
+        
+        return {"message": f"Successfully imported {len(applications)} applications"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     from pathlib import Path
