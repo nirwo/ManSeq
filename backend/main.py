@@ -34,61 +34,43 @@ def get_db():
 
 def init_db():
     with get_db() as conn:
-        # Create tables
-        conn.execute('''CREATE TABLE IF NOT EXISTS applications
-            (id INTEGER PRIMARY KEY,
-             name TEXT NOT NULL UNIQUE,
-             description TEXT)''')
+        cursor = conn.cursor()
         
-        conn.execute('''CREATE TABLE IF NOT EXISTS servers
-            (id INTEGER PRIMARY KEY,
-             name TEXT NOT NULL,
-             type TEXT NOT NULL CHECK(type IN ('WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM')),
-             status TEXT DEFAULT 'Unknown',
-             shutdown_status TEXT DEFAULT 'Not Started',
-             test_response TEXT,
-             owner_name TEXT,
-             owner_contact TEXT,
-             hostname TEXT,
-             port INTEGER DEFAULT 80,
-             application_id INTEGER,
-             FOREIGN KEY (application_id) REFERENCES applications (id))''')
-            
-        # Add sample data
-        try:
-            # Sample applications
-            apps = [
-                ("E-Commerce System", "Main e-commerce platform"),
-                ("CRM System", "Customer relationship management"),
-                ("Analytics Platform", "Data analytics and reporting")
-            ]
-            
-            for app_name, desc in apps:
-                conn.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
-                           (app_name, desc))
-            
-            # Get application IDs
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, name FROM applications')
-            app_ids = {name: id for id, name in cursor.fetchall()}
-            
-            # Sample servers with correct types
-            servers = [
-                ("Web Server 1", "WEB", "John Doe", "john@example.com", "google.com", 80, app_ids["E-Commerce System"]),
-                ("DB Server 1", "DB_MYSQL", "Jane Smith", "jane@example.com", "github.com", 3306, app_ids["E-Commerce System"]),
-                ("App Server 1", "APP_TOMCAT", "Bob Wilson", "bob@example.com", "microsoft.com", 8080, app_ids["CRM System"]),
-                ("Analytics DB", "DB_POSTGRES", "Alice Brown", "alice@example.com", "amazon.com", 5432, app_ids["Analytics Platform"]),
-                ("Load Balancer", "HTTPS", "Charlie Davis", "charlie@example.com", "cloudflare.com", 443, app_ids["E-Commerce System"])
-            ]
-            
-            for server in servers:
-                conn.execute('''
-                    INSERT INTO servers (name, type, owner_name, owner_contact, hostname, port, application_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', server)
-        except sqlite3.IntegrityError:
-            # Sample data already exists
-            pass
+        # Create servers table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS servers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            type TEXT NOT NULL CHECK(type IN ('WEB', 'HTTPS', 'DB_MYSQL', 'DB_POSTGRES', 'DB_MONGO', 'DB_REDIS', 'APP_TOMCAT', 'APP_NODEJS', 'APP_PYTHON', 'MAIL', 'FTP', 'SSH', 'DNS', 'MONITORING', 'CUSTOM')),
+            status TEXT DEFAULT 'Unknown',
+            shutdown_status TEXT DEFAULT 'Not Started',
+            test_response TEXT,
+            owner_name TEXT,
+            owner_contact TEXT,
+            hostname TEXT,
+            port INTEGER,
+            application_id INTEGER,
+            FOREIGN KEY (application_id) REFERENCES applications (id)
+        )
+        ''')
+
+        # Create applications table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT
+        )
+        ''')
+
+        # Add test_response column if it doesn't exist
+        cursor.execute("PRAGMA table_info(servers)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'test_response' not in columns:
+            cursor.execute('ALTER TABLE servers ADD COLUMN test_response TEXT')
+        
+        conn.commit()
 
 init_db()
 
