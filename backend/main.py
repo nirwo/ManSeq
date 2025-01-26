@@ -383,7 +383,9 @@ async def bulk_update_servers(request: Request):
                 WHERE id IN ({servers_str})
             """
             
-            await db.execute(query, [...update_values, *server_ids])
+            # Combine update values with server IDs for the query
+            all_params = update_values + server_ids
+            await db.execute(query, all_params)
             await db.commit()
         
         return {"message": "Servers updated successfully"}
