@@ -12,6 +12,9 @@ install_requirements() {
     pip install -r backend/requirements.txt
 }
 
+# Get server IP
+SERVER_IP=$(hostname -I | awk '{print $1}')
+
 # Check for required packages
 required_packages=("fastapi" "uvicorn" "python-multipart" "aiofiles" "sqlalchemy" "pydantic")
 missing_packages=false
@@ -30,19 +33,19 @@ fi
 
 # Start the backend server
 cd backend
-python3 -m uvicorn main:app --host 0.0.0.0 --port 3000 --reload &
+python3 -m uvicorn main:app --host $SERVER_IP --port 3000 --reload &
 
 # Wait a bit for backend to start
 sleep 2
 
 # Start the frontend server
 cd ../frontend
-python3 -m http.server 3001 --bind 0.0.0.0 &
+python3 -m http.server 3001 --bind $SERVER_IP &
 
-echo "Backend running on http://0.0.0.0:3000"
-echo "Frontend running on http://0.0.0.0:3001"
+echo "Backend running on http://$SERVER_IP:3000"
+echo "Frontend running on http://$SERVER_IP:3001"
 
-# Wait for any key to terminate both servers
+# Wait for any key to terminate servers
 read -p "Press any key to terminate servers..."
 
 # Kill both servers

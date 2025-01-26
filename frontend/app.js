@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://0.0.0.0:3000';
+const API_BASE_URL = 'http://192.168.68.56:3000';
 
 const { createApp } = Vue
 
