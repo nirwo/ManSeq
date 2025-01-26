@@ -1,27 +1,20 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import sqlite3
-import json
-import csv
-import io
-import os
-import subprocess
-import requests
-import asyncio
-from typing import List, Optional, Dict
 from pydantic import BaseModel
-from datetime import datetime
+from typing import List, Optional
+import sqlite3
+import os
+import asyncio
 import aiosqlite
-import socket
-import aiohttp
+import platform
+import subprocess
+import json
 
 app = FastAPI()
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,109 +80,82 @@ init_db()
 
 async def ping_host(hostname: str) -> dict:
     try:
-        # Run ping command with timeout
-        result = subprocess.run(['ping', '-c', '1', '-W', '2', hostname], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            return {"status": "online", "message": "Host is reachable (ping successful)"}
-        return {"status": "offline", "message": "Host is not responding to ping"}
+        if platform.system().lower() == "windows":
+            cmd = ["ping", "-n", "1", "-w", "1000", hostname]
+        else:
+            cmd = ["ping", "-c", "1", "-W", "1", hostname]
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        
+        if proc.returncode == 0:
+            return {"status": "online", "response": stdout.decode()}
+        else:
+            return {"status": "offline", "response": stderr.decode()}
     except Exception as e:
-        return {"status": "offline", "message": f"Ping failed: {str(e)}"}
+        return {"status": "error", "response": str(e)}
 
-async def check_server_status(hostname: str, port: int, server_type: str) -> dict:
+async def test_port(hostname: str, port: int) -> dict:
     try:
-        if not hostname or not port:
-            return {"status": "offline", "message": "Invalid hostname or port"}
-
-        # Always try ping first
-        ping_result = await ping_host(hostname)
-        
-        # If ping succeeds, try service-specific test
-        if ping_result["status"] == "online":
-            try:
-                if server_type.lower() == "http":
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(f"http://{hostname}:{port}", timeout=5) as response:
-                                return {"status": "online", "message": f"HTTP server responded with status {response.status}"}
-                    except Exception as e:
-                        return {"status": "online", "message": f"Host reachable but HTTP service error: {str(e)}"}
-                else:
-                    # Default TCP check
-                    try:
-                        reader, writer = await asyncio.wait_for(
-                            asyncio.open_connection(hostname, port),
-                            timeout=5
-                        )
-                        writer.close()
-                        await writer.wait_closed()
-                        return {"status": "online", "message": f"TCP connection successful on port {port}"}
-                    except Exception as e:
-                        return {"status": "online", "message": f"Host reachable but service error: {str(e)}"}
-            except Exception as e:
-                # Even if service test fails, if ping works we mark as online
-                return ping_result
-        
-        return ping_result
-        
+        future = asyncio.open_connection(hostname, port)
+        reader, writer = await asyncio.wait_for(future, timeout=1.0)
+        writer.close()
+        await writer.wait_closed()
+        return {"status": "online", "response": "Port is open"}
     except Exception as e:
-        return {"status": "offline", "message": f"Test failed: {str(e)}"}
+        return {"status": "offline", "response": str(e)}
+
+async def update_server_status(server_id: int, status: str, test_response: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
+            (status, test_response, server_id)
+        )
+        await db.commit()
+
+async def update_application_status(app_id: int, status: str, test_response: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'UPDATE applications SET status = ?, test_response = ? WHERE id = ?',
+            (status, test_response, app_id)
+        )
+        await db.commit()
 
 async def update_all_statuses():
     while True:
         try:
-            conn = get_db()
-            cursor = conn.cursor()
-            
-            # Update servers
-            cursor.execute('SELECT id, hostname, port, type FROM servers')
-            servers = cursor.fetchall()
-            
-            for server in servers:
-                result = await check_server_status(server[1], server[2], server[3])
-                cursor.execute(
-                    'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
-                    (result["status"], result["message"], server[0])
-                )
-            
-            # Update applications
-            cursor.execute('''
-                SELECT a.id, GROUP_CONCAT(s.status) as server_statuses 
-                FROM applications a 
-                LEFT JOIN servers s ON s.application_id = a.id 
-                GROUP BY a.id
-            ''')
-            apps = cursor.fetchall()
-            
-            for app in apps:
-                if not app[1]:  # No servers
-                    status = "Unknown"
-                    message = "No servers associated"
-                else:
-                    statuses = app[1].split(',')
-                    if all(s == "online" for s in statuses):
-                        status = "online"
-                        message = "All servers online"
-                    elif all(s == "offline" for s in statuses):
-                        status = "offline"
-                        message = "All servers offline"
-                    else:
-                        status = "partial"
-                        online = sum(1 for s in statuses if s == "online")
-                        total = len(statuses)
-                        message = f"{online}/{total} servers online"
+            async with aiosqlite.connect(DB_PATH) as db:
+                db.row_factory = sqlite3.Row
+                cursor = await db.execute('SELECT id, hostname, port FROM servers')
+                servers = await cursor.fetchall()
                 
-                cursor.execute(
-                    'UPDATE applications SET status = ?, test_response = ? WHERE id = ?',
-                    (status, message, app[0])
-                )
-            
-            conn.commit()
+                for server in servers:
+                    ping_result = await ping_host(server['hostname'])
+                    port_result = await test_port(server['hostname'], server['port'])
+                    
+                    status = 'online' if ping_result['status'] == 'online' and port_result['status'] == 'online' else 'offline'
+                    test_response = json.dumps({
+                        'ping': ping_result,
+                        'port': port_result
+                    })
+                    
+                    await update_server_status(server['id'], status, test_response)
+                
+                cursor = await db.execute('SELECT id, name FROM applications')
+                apps = await cursor.fetchall()
+                
+                for app in apps:
+                    # For now, just mark all applications as online
+                    await update_application_status(app['id'], 'online', 'Application status check not implemented')
         except Exception as e:
             print(f"Error updating statuses: {e}")
         finally:
-            if conn:
-                conn.close()
+            if 'db' in locals():
+                await db.close()
             await asyncio.sleep(30)
 
 @app.on_event("startup")
@@ -204,127 +170,91 @@ class ServerValidation(BaseModel):
 @app.post("/servers/test")
 async def test_server(server: dict):
     try:
-        result = await check_server_status(server.get("hostname"), server.get("port"), server.get("type", "tcp"))
-        return result
+        ping_result = await ping_host(server['hostname'])
+        port_result = await test_port(server['hostname'], int(server['port']))
+        
+        return {
+            'status': 'online' if ping_result['status'] == 'online' and port_result['status'] == 'online' else 'offline',
+            'ping': ping_result,
+            'port': port_result
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/servers/{server_id}/test")
-async def test_server_endpoint(server_id: int):
+@app.post("/servers/validate")
+async def validate_server(server: ServerValidation):
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT hostname, port, type FROM servers WHERE id = ?', (server_id,))
-        server = cursor.fetchone()
+        # Test connection
+        ping_result = await ping_host(server.hostname)
+        if ping_result['status'] != 'online':
+            return {"valid": False, "error": f"Failed to ping host: {ping_result['response']}"}
         
-        if not server:
-            raise HTTPException(status_code=404, detail="Server not found")
+        # Test port
+        port_result = await test_port(server.hostname, server.port)
+        if port_result['status'] != 'online':
+            return {"valid": False, "error": f"Failed to connect to port: {port_result['response']}"}
         
-        result = await check_server_status(server[0], server[1], server[2])
-        
-        cursor.execute(
-            'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
-            (result["status"], result["message"], server_id)
-        )
-        conn.commit()
-        
-        return result
-    finally:
-        if conn:
-            conn.close()
-
-@app.post("/servers/test-all")
-async def test_all_servers():
-    try:
-        db = get_db()
-        cursor = db.cursor()
-        
-        cursor.execute("SELECT * FROM servers")
-        servers = cursor.fetchall()
-        
-        for server in servers:
-            try:
-                test_response = await check_server_status(server[1], server[2], server[3])
-                cursor.execute(
-                    "UPDATE servers SET status = ?, test_response = ? WHERE id = ?",
-                    (test_response["status"], json.dumps(test_response), server[0])
-                )
-                db.commit()
-            except Exception as e:
-                print(f"Error testing server {server['id']}: {str(e)}")
-                continue
-        
-        cursor.execute("SELECT * FROM applications")
-        applications = cursor.fetchall()
-        
-        for app in applications:
-            try:
-                cursor.execute("SELECT status FROM servers WHERE application_id = ?", (app["id"],))
-                server_statuses = [row[0] for row in cursor.fetchall()]
-                
-                app_status = "online" if server_statuses and all(status == "online" for status in server_statuses) else "offline"
-                
-                cursor.execute(
-                    "UPDATE applications SET status = ? WHERE id = ?",
-                    (app_status, app["id"])
-                )
-                db.commit()
-            except Exception as e:
-                print(f"Error updating application {app['id']}: {str(e)}")
-                continue
-        
-        return {"message": "All servers and applications tested successfully"}
-        
+        return {"valid": True}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
+        return {"valid": False, "error": str(e)}
 
-@app.post("/servers/{server_id}/test")
-async def test_server(server_id: int):
+@app.get("/servers/{server_id}")
+async def get_server(server_id: int):
     try:
-        with get_db() as db:
-            # Get server details
-            cursor = db.cursor()
-            cursor.execute("SELECT hostname, port FROM servers WHERE id = ?", (server_id,))
-            server = cursor.fetchone()
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute('SELECT * FROM servers WHERE id = ?', (server_id,))
+            server = await cursor.fetchone()
             
-            if not server:
+            if server is None:
                 raise HTTPException(status_code=404, detail="Server not found")
             
-            hostname, port = server
+            return dict(server)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/servers/{server_id}")
+async def update_server(server_id: int, server_data: dict):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            # Check if server exists
+            cursor = await db.execute('SELECT id FROM servers WHERE id = ?', (server_id,))
+            if await cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Server not found")
             
-            # Simulate server test
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)  # 2 second timeout
+            # Update server
+            await db.execute('''
+                UPDATE servers 
+                SET name = ?, hostname = ?, port = ?, type = ?, owner_name = ?
+                WHERE id = ?
+            ''', (
+                server_data['name'],
+                server_data['hostname'],
+                server_data['port'],
+                server_data['type'],
+                server_data.get('owner_name'),
+                server_id
+            ))
+            await db.commit()
             
-            try:
-                result = sock.connect_ex((hostname, port))
-                if result == 0:
-                    status = "completed"
-                    message = "Server is reachable"
-                else:
-                    status = "in_progress"
-                    message = "Server is not reachable"
-            except socket.gaierror:
-                status = "in_progress"
-                message = "Could not resolve hostname"
-            except Exception as e:
-                status = "in_progress"
-                message = str(e)
-            finally:
-                sock.close()
+            return {"message": "Server updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/servers/{server_id}")
+async def delete_server(server_id: int):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            # Check if server exists
+            cursor = await db.execute('SELECT id FROM servers WHERE id = ?', (server_id,))
+            if await cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Server not found")
             
-            # Update server status
-            cursor.execute(
-                "UPDATE servers SET status = ? WHERE id = ?",
-                (status, server_id)
-            )
-            db.commit()
+            # Delete server
+            await db.execute('DELETE FROM servers WHERE id = ?', (server_id,))
+            await db.commit()
             
-            return {"message": message, "status": status}
-            
+            return {"message": "Server deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -339,38 +269,36 @@ async def get_applications():
 
 @app.post("/applications")
 async def create_application(app_data: dict):
-    conn = None
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO applications (name, description) VALUES (?, ?)',
-                      (app_data["name"], app_data["description"]))
-        app_id = cursor.lastrowid
-        return {"id": app_id, **app_data}
-    finally:
-        if conn:
-            conn.close()
-
-@app.put("/applications/{app_id}")
-async def update_application(app_id: int, app: dict):
-    try:
-        with get_db() as db:
-            db.execute(
-                "UPDATE applications SET name = ?, description = ?, status = ? WHERE id = ?",
-                (app["name"], app["description"], app.get("status", "in_progress"), app_id)
-            )
-            db.commit()
-        return {"message": "Application updated successfully"}
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute('''
+                INSERT INTO applications (name, description)
+                VALUES (?, ?)
+            ''', (app_data['name'], app_data.get('description')))
+            await db.commit()
+            
+            app_id = cursor.lastrowid
+            return {"id": app_id, "message": "Application created successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/applications/{app_id}")
-async def delete_application(app_id: int):
+@app.post("/applications/import")
+async def import_applications(import_data: dict):
     try:
-        with get_db() as db:
-            db.execute("DELETE FROM applications WHERE id = ?", (app_id,))
-            db.commit()
-        return {"message": "Application deleted successfully"}
+        if not import_data or 'applications' not in import_data:
+            raise HTTPException(status_code=400, detail="Invalid import data format")
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            for app in import_data['applications']:
+                if not all(k in app for k in ['name']):
+                    raise HTTPException(status_code=400, detail=f"Missing required fields for application: {app}")
+                
+                await db.execute(
+                    'INSERT INTO applications (name, description, status) VALUES (?, ?, ?)',
+                    (app['name'], app.get('description', ''), 'online')
+                )
+            await db.commit()
+        return {"message": "Applications imported successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -384,435 +312,59 @@ async def get_servers():
 
 @app.post("/servers")
 async def create_server(server_data: dict):
-    conn = None
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO servers (name, type, status, shutdown_status, owner_name, owner_contact, hostname, port, application_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            server_data["name"],
-            server_data["type"],
-            "Pending",
-            "Not Started",
-            server_data["owner_name"],
-            server_data["owner_contact"],
-            server_data.get("hostname", ""),
-            server_data.get("port", 80),
-            server_data.get("application_id")
-        ))
-        server_id = cursor.lastrowid
-        return {"id": server_id, **server_data}
-    finally:
-        if conn:
-            conn.close()
-
-@app.put("/servers/{server_id}")
-async def update_server(server_id: int, server: dict):
-    try:
-        with get_db() as db:
-            db.execute(
-                "UPDATE servers SET name = ?, hostname = ?, port = ?, type = ?, owner_name = ?, status = ? WHERE id = ?",
-                (server["name"], server["hostname"], server["port"], server["type"], 
-                 server["owner_name"], server.get("status", "in_progress"), server_id)
-            )
-            db.commit()
-        return {"message": "Server updated successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/servers/{server_id}")
-async def delete_server(server_id: int):
-    try:
-        with get_db() as db:
-            db.execute("DELETE FROM servers WHERE id = ?", (server_id,))
-            db.commit()
-        return {"message": "Server deleted successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/servers/import-csv")
-async def import_csv(file: UploadFile = File(...)):
-    content = await file.read()
-    csv_data = csv.DictReader(io.StringIO(content.decode()))
-    
-    response = {"success": [], "errors": []}
-    applications = {}
-    
-    with get_db() as conn:
-        cursor = conn.cursor()
-        
-        for row in csv_data:
-            try:
-                # Get or create application based on name
-                app_name = row.get('name', '').split('_')[0]  # Get application name from server name prefix
-                if app_name not in applications:
-                    # Check if application exists
-                    cursor.execute('SELECT id FROM applications WHERE name = ?', (app_name,))
-                    app_result = cursor.fetchone()
-                    
-                    if app_result:
-                        applications[app_name] = app_result[0]
-                    else:
-                        # Create new application
-                        cursor.execute(
-                            'INSERT INTO applications (name, description) VALUES (?, ?)',
-                            (app_name, f"Application for {app_name} services")
-                        )
-                        applications[app_name] = cursor.lastrowid
-                
-                # Insert server with application reference
-                port = int(row.get('port', 80))
-                server_data = {
-                    'name': row['name'],
-                    'type': row.get('type', 'CUSTOM'),
-                    'owner_name': row.get('team', 'Unknown'),
-                    'hostname': row.get('host', ''),
-                    'port': port,
-                    'application_id': applications[app_name]
-                }
-                
-                cursor.execute('''
-                    INSERT INTO servers (name, type, owner_name, hostname, port, application_id)
-                    VALUES (:name, :type, :owner_name, :hostname, :port, :application_id)
-                ''', server_data)
-                
-                response["success"].append({
-                    "name": row['name'],
-                    "message": "Server created successfully"
-                })
-                
-            except Exception as e:
-                response["errors"].append({
-                    "name": row.get('name', 'Unknown'),
-                    "error": str(e)
-                })
-        
-        conn.commit()
-    
-    return response
-
-@app.put("/servers/bulk-update")
-async def bulk_update_servers(request: Request):
-    try:
-        data = await request.json()
-        server_ids = data.get('server_ids', [])
-        updates = data.get('updates', {})
-        
-        # Remove None values from updates
-        updates = {k: v for k, v in updates.items() if v is not None}
-        
-        if not server_ids or not updates:
-            raise HTTPException(status_code=400, detail="No servers or updates specified")
-        
-        # Update servers in database
         async with aiosqlite.connect(DB_PATH) as db:
-            update_fields = ', '.join([f"{k} = ?" for k in updates.keys()])
-            update_values = list(updates.values())
-            
-            # Convert server_ids to string for SQL IN clause
-            servers_str = ','.join('?' * len(server_ids))
-            
-            query = f"""
-                UPDATE servers 
-                SET {update_fields}
-                WHERE id IN ({servers_str})
-            """
-            
-            # Combine update values with server IDs for the query
-            all_params = update_values + server_ids
-            await db.execute(query, all_params)
+            cursor = await db.execute('''
+                INSERT INTO servers (name, hostname, port, type, owner_name)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                server_data['name'],
+                server_data['hostname'],
+                server_data['port'],
+                server_data['type'],
+                server_data.get('owner_name')
+            ))
             await db.commit()
-        
-        return {"message": "Servers updated successfully"}
-        
+            
+            server_id = cursor.lastrowid
+            return {"id": server_id, "message": "Server created successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/applications/{app_id}/test")
-async def test_application(app_id: int):
-    try:
-        db = get_db()
-        cursor = db.cursor()
-        
-        # Get all servers for this application
-        cursor.execute('SELECT id, hostname, port, type FROM servers WHERE application_id = ?', (app_id,))
-        servers = cursor.fetchall()
-        
-        if not servers:
-            return {"status": "Unknown", "message": "No servers associated"}
-        
-        results = []
-        for server in servers:
-            try:
-                test_response = await check_server_status(server[1], server[2], server[3])
-                cursor.execute(
-                    'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
-                    (test_response["status"], json.dumps(test_response), server[0])
-                )
-                db.commit()
-                results.append(test_response)
-            except Exception as e:
-                print(f"Error testing server {server['id']}: {str(e)}")
-                continue
-        
-        # Calculate overall application status
-        if all(r["status"] == "online" for r in results):
-            status = "online"
-            message = "All servers online"
-        elif all(r["status"] == "offline" for r in results):
-            status = "offline"
-            message = "All servers offline"
-        else:
-            status = "partial"
-            online = sum(1 for r in results if r["status"] == "online")
-            message = f"{online}/{len(results)} servers online"
-        
-        cursor.execute(
-            'UPDATE applications SET status = ? WHERE id = ?',
-            (status, app_id)
-        )
-        db.commit()
-        
-        return {"status": status, "message": message, "server_results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@app.post("/applications/test-all")
-async def test_all_applications():
-    try:
-        db = get_db()
-        cursor = db.cursor()
-        
-        cursor.execute("SELECT * FROM applications")
-        applications = cursor.fetchall()
-        
-        for app in applications:
-            try:
-                cursor.execute("SELECT * FROM servers WHERE application_id = ?", (app["id"],))
-                servers = cursor.fetchall()
-                
-                for server in servers:
-                    test_response = await check_server_status(server[1], server[2], server[3])
-                    cursor.execute(
-                        'UPDATE servers SET status = ?, test_response = ? WHERE id = ?',
-                        (test_response["status"], json.dumps(test_response), server[0])
-                    )
-                    db.commit()
-                
-                cursor.execute("SELECT status FROM servers WHERE application_id = ?", (app["id"],))
-                server_statuses = [row[0] for row in cursor.fetchall()]
-                
-                app_status = "online" if server_statuses and all(status == "online" for status in server_statuses) else "offline"
-                
-                cursor.execute(
-                    "UPDATE applications SET status = ? WHERE id = ?",
-                    (app_status, app["id"])
-                )
-                db.commit()
-                
-            except Exception as e:
-                print(f"Error testing application {app['id']}: {str(e)}")
-                continue
-        
-        return {"message": "All applications tested successfully"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
 
 @app.post("/servers/import")
-async def import_servers(request: Request):
+async def import_servers(import_data: dict):
     try:
-        data = await request.json()
-        servers = data.get("data", [])
+        if not import_data or 'servers' not in import_data:
+            raise HTTPException(status_code=400, detail="Invalid import data format")
         
-        print("Received servers data:", servers)  # Debug log
-        
-        # Validate and insert servers
-        for server in servers:
-            if not all(k in server for k in ["name", "hostname", "port", "type"]):
-                raise HTTPException(status_code=400, detail=f"Invalid server data format. Required fields missing: {server}")
-        
-        # Insert servers into database
-        with get_db() as db:
-            for server in servers:
-                db.execute(
-                    "INSERT INTO servers (name, hostname, port, type) VALUES (?, ?, ?, ?)",
-                    (server["name"], server["hostname"], server["port"], server["type"])
+        async with aiosqlite.connect(DB_PATH) as db:
+            for server in import_data['servers']:
+                if not all(k in server for k in ['name', 'hostname', 'port', 'type']):
+                    raise HTTPException(status_code=400, detail=f"Missing required fields for server: {server}")
+                
+                # Validate server connection before import
+                validation = await validate_server(ServerValidation(
+                    hostname=server['hostname'],
+                    port=int(server['port']),
+                    type=server['type']
+                ))
+                
+                if not validation['valid']:
+                    server['status'] = 'offline'
+                    server['test_response'] = validation.get('error', 'Validation failed')
+                else:
+                    server['status'] = 'online'
+                    server['test_response'] = 'Server validated successfully'
+                
+                await db.execute(
+                    'INSERT INTO servers (name, hostname, port, type, status, test_response) VALUES (?, ?, ?, ?, ?, ?)',
+                    (server['name'], server['hostname'], int(server['port']), server['type'], server['status'], server['test_response'])
                 )
-            db.commit()
-        
+            await db.commit()
         return {"message": "Servers imported successfully"}
     except Exception as e:
-        print("Import error:", str(e))  # Debug log
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/applications/import")
-async def import_applications(request: Request):
-    try:
-        data = await request.json()
-        applications = data.get("data", [])
-        
-        print("Received applications data:", applications)  # Debug log
-        
-        # Validate and insert applications
-        for app in applications:
-            if not all(k in app for k in ["name", "description"]):
-                raise HTTPException(status_code=400, detail=f"Invalid application data format. Required fields missing: {app}")
-        
-        # Insert applications into database
-        with get_db() as db:
-            for app in applications:
-                db.execute(
-                    "INSERT INTO applications (name, description) VALUES (?, ?)",
-                    (app["name"], app["description"])
-                )
-            db.commit()
-        
-        return {"message": "Applications imported successfully"}
-    except Exception as e:
-        print("Import error:", str(e))  # Debug log
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/servers/upload")
-async def upload_servers_csv(file: UploadFile = File(...)):
-    try:
-        content = await file.read()
-        data = json.loads(content)
-        
-        if not isinstance(data, dict) or 'data' not in data:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Invalid data format"}
-            )
-        
-        servers = []
-        for i, row in enumerate(data['data'], 1):
-            try:
-                # Validate port before creating server object
-                try:
-                    port = int(row.get('port', 0))
-                    if not (0 < port < 65536):
-                        return JSONResponse(
-                            status_code=400,
-                            content={"error": f"Row {i}: Port must be between 1 and 65535"}
-                        )
-                except ValueError:
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": f"Row {i}: Invalid port number"}
-                    )
-
-                server = {
-                    "name": str(row.get('name', '')).strip(),
-                    "hostname": str(row.get('hostname', '')).strip(),
-                    "port": port,
-                    "type": str(row.get('type', '')).strip(),
-                    "owner_name": str(row.get('owner_name', '')).strip()
-                }
-                
-                # Validate required fields
-                if not all([server['name'], server['hostname'], server['type']]):
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": f"Row {i}: Name, hostname, and type are required"}
-                    )
-                
-                servers.append(server)
-            except Exception as e:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": f"Row {i}: {str(e)}"}
-                )
-        
-        if not servers:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "No valid servers found in the data"}
-            )
-        
-        with get_db() as db:
-            for server in servers:
-                db.execute(
-                    "INSERT INTO servers (name, hostname, port, type, owner_name) VALUES (?, ?, ?, ?, ?)",
-                    (server["name"], server["hostname"], server["port"], server["type"], server["owner_name"])
-                )
-            db.commit()
-        
-        return {"message": f"Successfully imported {len(servers)} servers"}
-    except json.JSONDecodeError:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Invalid JSON format"}
-        )
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
-        )
-
-@app.post("/applications/upload")
-async def upload_applications_csv(file: UploadFile = File(...)):
-    try:
-        content = await file.read()
-        data = json.loads(content)
-        
-        if not isinstance(data, dict) or 'data' not in data:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Invalid data format"}
-            )
-        
-        apps = []
-        for i, row in enumerate(data['data'], 1):
-            try:
-                app = {
-                    "name": row['name'],
-                    "description": row.get('description', '')
-                }
-                if not app['name']:
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": f"Row {i}: Name cannot be empty"}
-                    )
-                apps.append(app)
-            except Exception as e:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": f"Row {i}: {str(e)}"}
-                )
-        
-        with get_db() as db:
-            for app in apps:
-                db.execute(
-                    "INSERT INTO applications (name, description) VALUES (?, ?)",
-                    (app["name"], app["description"])
-                )
-            db.commit()
-        
-        return {"message": f"Imported {len(apps)} applications"}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
-        )
 
 if __name__ == "__main__":
     import uvicorn
-    from pathlib import Path
-    import os
-    
-    # Get the directory containing the script
-    script_dir = Path(__file__).parent.absolute()
-    os.chdir(script_dir)
-    
-    # Initialize database
-    init_db()
-    
-    # Run the server
-    uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=3000)
