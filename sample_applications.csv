@@ -1,0 +1,4 @@
+name,description
+Web App,Main web application for customer portal
+Admin Dashboard,Internal administration dashboard
+API Service,RESTful API service for mobile apps

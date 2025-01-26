@@ -1,0 +1,4 @@
+name,hostname,port,type,owner_name
+Main Server,server1.example.com,80,http,John Doe
+Database Server,db.example.com,5432,postgresql,Jane Smith
+Cache Server,cache.example.com,6379,redis,Admin User

@@ -745,6 +745,29 @@ const app = createApp({
                 this.showMessage('Failed to import applications: ' + error.message, true);
             }
         },
+        async handleServerFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                try {
+                    const content = await file.text();
+                    this.importData = content;
+                } catch (error) {
+                    this.showMessage('Error reading file: ' + error.message, true);
+                }
+            }
+        },
+
+        async handleAppFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                try {
+                    const content = await file.text();
+                    this.importData = content;
+                } catch (error) {
+                    this.showMessage('Error reading file: ' + error.message, true);
+                }
+            }
+        },
     },
     async mounted() {
         await this.fetchApplications()
