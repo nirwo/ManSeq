@@ -5,6 +5,7 @@ const API_BASE_URL = `http://${window.location.hostname}:3000`
 createApp({
     data() {
         return {
+            darkMode: localStorage.getItem('darkMode') === 'true',
             applications: [],
             servers: [],
             filteredServers: [],
@@ -82,6 +83,11 @@ createApp({
             }
         }
     },
+    watch: {
+        darkMode(newVal) {
+            localStorage.setItem('darkMode', newVal);
+        }
+    },
     methods: {
         toggleServerSelection(serverId) {
             const index = this.selectedServers.indexOf(serverId)
@@ -144,22 +150,25 @@ createApp({
             }
         },
         filterItems() {
-            const query = this.searchQuery.toLowerCase()
+            if (!this.searchQuery) {
+                this.filteredServers = this.servers;
+                return;
+            }
             
-            // Filter servers
-            this.filteredServers = Array.isArray(this.servers) ? 
-                this.servers.filter(server => 
-                    server.name.toLowerCase().includes(query) ||
-                    server.hostname.toLowerCase().includes(query) ||
-                    server.owner_name.toLowerCase().includes(query)
-                ) : []
-
-            // Filter applications
-            this.filteredApplications = Array.isArray(this.applications) ? 
-                this.applications.filter(app => 
-                    app.name.toLowerCase().includes(query) ||
-                    app.description.toLowerCase().includes(query)
-                ) : []
+            const query = this.searchQuery.toLowerCase();
+            
+            if (this.activeView === 'servers') {
+                this.filteredServers = this.servers.filter(server => {
+                    const appName = this.getAppName(server.application_id) || '';
+                    return (
+                        (server.name || '').toLowerCase().includes(query) ||
+                        (server.type || '').toLowerCase().includes(query) ||
+                        (server.owner_name || '').toLowerCase().includes(query) ||
+                        (server.hostname || '').toLowerCase().includes(query) ||
+                        appName.toLowerCase().includes(query)
+                    );
+                });
+            }
         },
         async handleFileUpload(event) {
             const file = event.target.files[0]
