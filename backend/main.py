@@ -629,36 +629,41 @@ async def test_all_applications():
 async def import_servers(request: Request):
     try:
         data = await request.json()
-        servers = data.get("servers", [])
+        servers = data.get("data", [])
+        
+        print("Received servers data:", servers)  # Debug log
         
         # Validate and insert servers
         for server in servers:
-            if not all(k in server for k in ["name", "hostname", "port", "type", "owner_name"]):
-                raise HTTPException(status_code=400, detail="Invalid server data format")
+            if not all(k in server for k in ["name", "hostname", "port", "type"]):
+                raise HTTPException(status_code=400, detail=f"Invalid server data format. Required fields missing: {server}")
         
         # Insert servers into database
         with get_db() as db:
             for server in servers:
                 db.execute(
-                    "INSERT INTO servers (name, hostname, port, type, owner_name) VALUES (?, ?, ?, ?, ?)",
-                    (server["name"], server["hostname"], server["port"], server["type"], server["owner_name"])
+                    "INSERT INTO servers (name, hostname, port, type) VALUES (?, ?, ?, ?)",
+                    (server["name"], server["hostname"], server["port"], server["type"])
                 )
             db.commit()
         
         return {"message": "Servers imported successfully"}
     except Exception as e:
+        print("Import error:", str(e))  # Debug log
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/applications/import")
 async def import_applications(request: Request):
     try:
         data = await request.json()
-        applications = data.get("applications", [])
+        applications = data.get("data", [])
+        
+        print("Received applications data:", applications)  # Debug log
         
         # Validate and insert applications
         for app in applications:
             if not all(k in app for k in ["name", "description"]):
-                raise HTTPException(status_code=400, detail="Invalid application data format")
+                raise HTTPException(status_code=400, detail=f"Invalid application data format. Required fields missing: {app}")
         
         # Insert applications into database
         with get_db() as db:
@@ -671,6 +676,7 @@ async def import_applications(request: Request):
         
         return {"message": "Applications imported successfully"}
     except Exception as e:
+        print("Import error:", str(e))  # Debug log
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/servers/upload")
