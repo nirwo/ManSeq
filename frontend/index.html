@@ -114,89 +114,35 @@
 
             <!-- Applications View -->
             <div v-if="activeView === 'applications'" class="space-y-4">
+                <div class="mb-4 flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Applications</h2>
+                    <div class="space-x-2">
+                        <button @click="testAllApplications" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            Test All Applications
+                        </button>
+                        <button @click="showAddApplicationModal = true" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                            Add Application
+                        </button>
+                    </div>
+                </div>
                 <div v-for="app in applications" :key="app.id" class="bg-white p-4 rounded shadow">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-semibold">{{ app.name }}</h2>
                         <div class="space-x-2">
-                            <button @click.stop="editApplication(app)" 
-                                    class="text-blue-600 hover:text-blue-800">
+                            <button @click="testApplication(app)" class="text-blue-600 hover:text-blue-800">
+                                Test
+                            </button>
+                            <button @click="editApplication(app)" class="text-blue-600 hover:text-blue-800">
                                 Edit
                             </button>
-                            <button @click.stop="deleteApplication(app.id)"
-                                    class="text-red-600 hover:text-red-800">
+                            <button @click="deleteApplication(app.id)" class="text-red-600 hover:text-red-800">
                                 Delete
                             </button>
                         </div>
                     </div>
-                    <p class="text-gray-600 mb-4">{{ app.description }}</p>
-                    
-                    <!-- Servers in this application -->
-                    <div class="space-y-4">
-                        <div v-for="server in getServersByApp(app.id)" :key="server.id" 
-                             class="border p-4 rounded">
-                            <div class="flex items-center justify-between mb-2">
-                                <div class="flex items-center">
-                                    <input type="checkbox" 
-                                           :checked="selectedServers.includes(server.id)"
-                                           @change="toggleServerSelection(server.id)"
-                                           class="mr-3 rounded border-gray-300">
-                                    <span class="status-indicator" 
-                                          :class="getStatusClass(server.status)"></span>
-                                    <span class="font-medium">{{ server.name }}</span>
-                                </div>
-                                <div class="flex items-center space-x-2">
-                                    <select v-model="server.shutdown_status" 
-                                            @change="updateShutdownStatus(server)"
-                                            class="rounded border p-1 text-sm">
-                                        <option value="Not Started">Not Started</option>
-                                        <option value="In Progress">In Progress</option>
-                                        <option value="Completed">Completed</option>
-                                    </select>
-                                    <button @click="openEditModal(server)" 
-                                            class="text-blue-600 hover:text-blue-800">
-                                        Edit
-                                    </button>
-                                    <button @click="deleteServer(server.id)" 
-                                            class="text-red-600 hover:text-red-800">
-                                        Delete
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="text-sm text-gray-600">
-                                <div class="flex items-center space-x-4 mb-2">
-                                    <div>
-                                        <span class="font-medium">Type:</span>
-                                        <select v-model="server.type" 
-                                                @change="updateServerPort"
-                                                class="ml-2 rounded border p-1">
-                                            <option v-for="(typeInfo, type) in serverTypes" 
-                                                    :key="type" 
-                                                    :value="type">
-                                                {{ typeInfo.description }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <span class="font-medium">Port:</span>
-                                        <input type="number" 
-                                               v-model.number="server.port"
-                                               :placeholder="serverTypes[server.type].defaultPort"
-                                               class="ml-2 w-24 rounded border p-1"
-                                               :class="{'bg-gray-100': server.type !== 'CUSTOM'}"
-                                               :readonly="server.type !== 'CUSTOM'">
-                                    </div>
-                                </div>
-                                <p>Host: {{ server.hostname }}</p>
-                                <p>Owner: {{ server.owner_name }}</p>
-                                <p>Shutdown Status: <span :class="{
-                                    'text-yellow-600': server.shutdown_status === 'In Progress',
-                                    'text-green-600': server.shutdown_status === 'Completed',
-                                    'text-gray-600': server.shutdown_status === 'Not Started'
-                                }">{{ server.shutdown_status }}</span></p>
-                                <p v-if="server.test_response" class="text-sm text-gray-600">Test Response: {{ server.test_response }}</p>
-                            </div>
-                        </div>
-                    </div>
+                    <p class="text-gray-600">{{ app.description }}</p>
+                    <p class="text-sm text-gray-600 mt-2">Status: <span :class="getStatusClass(app.status)">{{ app.status }}</span></p>
+                    <p v-if="app.test_response" class="text-sm text-gray-600">Test Response: {{ app.test_response }}</p>
                 </div>
             </div>
 

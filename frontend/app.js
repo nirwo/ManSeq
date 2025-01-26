@@ -405,6 +405,60 @@ createApp({
                 this.showError('Error testing servers: ' + error.message);
             }
         },
+        async testApplication(app) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/${app.id}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error('Failed to test application');
+                const result = await response.json();
+                
+                // Update local state
+                app.status = result.status;
+                app.test_response = result.message;
+                
+                // Update associated servers
+                if (result.server_results) {
+                    const servers = this.servers.filter(s => s.application_id === app.id);
+                    result.server_results.forEach((res, idx) => {
+                        if (servers[idx]) {
+                            servers[idx].status = res.status;
+                            servers[idx].test_response = res.message;
+                        }
+                    });
+                }
+                
+                this.showSuccess('Application test completed');
+            } catch (error) {
+                this.showError('Error testing application: ' + error.message);
+            }
+        },
+        async testAllApplications() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/applications/test-all`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error('Failed to test applications');
+                const data = await response.json();
+                
+                // Update local state
+                data.results.forEach(result => {
+                    const app = this.applications.find(a => a.id === result.id);
+                    if (app) {
+                        app.status = result.result.status;
+                        app.test_response = result.result.message;
+                    }
+                });
+                
+                this.showSuccess('All applications tested successfully');
+            } catch (error) {
+                this.showError('Error testing applications: ' + error.message);
+            }
+        },
     },
     async mounted() {
         await this.fetchApplications()
